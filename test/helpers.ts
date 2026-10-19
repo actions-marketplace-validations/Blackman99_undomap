@@ -22,6 +22,8 @@ export function git(cwd: string, ...args: string[]): string {
 interface RepoSpec {
   commit: string[];
   generate?: Record<string, number>;
+  /** Files that start with an ELF header (a compiled binary, as far as undomap can tell). */
+  elf?: string[];
   modify?: Record<string, string>;
   remote?: boolean;
 }
@@ -35,6 +37,12 @@ function makeRepo(dir: string, spec: RepoSpec, base: string, name: string) {
     mkdirSync(dirname(join(dir, p)), { recursive: true });
     const buf = Buffer.alloc(n);
     for (let i = 0; i < n; i++) buf[i] = (i * 31 + 7) & 0xff;
+    writeFileSync(join(dir, p), buf);
+  }
+  for (const p of spec.elf ?? []) {
+    mkdirSync(dirname(join(dir, p)), { recursive: true });
+    const buf = Buffer.alloc(256, 0);
+    buf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
     writeFileSync(join(dir, p), buf);
   }
   git(dir, "init", "-q");

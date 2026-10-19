@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { existsSync as existsSync4, realpathSync as realpathSync3 } from "node:fs";
+import { existsSync as existsSync5, realpathSync as realpathSync5 } from "node:fs";
 import { homedir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,8 +28,8 @@ function parseBytes(s) {
 var plural = (n, one, many = one + "s") => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 // src/collect.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
-import { accessSync, closeSync, constants, existsSync as existsSync2, lstatSync, openSync, readSync, readdirSync as readdirSync2, realpathSync as realpathSync2, statSync } from "node:fs";
+import { spawnSync as spawnSync3 } from "node:child_process";
+import { accessSync, closeSync, constants, existsSync as existsSync3, lstatSync, openSync, readSync, readdirSync as readdirSync3, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
 import { basename, dirname, join as join2, relative, resolve, sep as sep2 } from "node:path";
 
 // src/patterns.ts
@@ -98,19 +98,21 @@ function critical(path) {
   for (const [re, why] of CRITICAL) if (re.test(name)) return why;
   return void 0;
 }
-function globMatch(pattern, path) {
+function globMatcher(pattern) {
   const p = pattern.trim().replace(/^\.\//, "");
-  if (!p) return false;
+  if (!p) return () => false;
   if (p.endsWith("/")) {
     const anchored = p.slice(0, -1).includes("/");
-    if (path === p || path.startsWith(p)) return true;
-    return !anchored && ("/" + path).includes("/" + p);
+    return (path) => path === p || path.startsWith(p) || !anchored && ("/" + path).includes("/" + p);
   }
   const re = new RegExp(
     "^" + p.split("**").map((part) => part.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join(".*") + "$"
   );
-  const subject = p.includes("/") ? path.replace(/\/+$/, "") : base(path);
-  return re.test(subject);
+  const rel = p.includes("/");
+  return (path) => re.test(rel ? path.replace(/\/+$/, "") : base(path));
+}
+function globMatch(pattern, path) {
+  return globMatcher(pattern)(path);
 }
 
 // src/snapshots.ts
@@ -212,11 +214,268 @@ function trashProbe(dir, name) {
   return existsSync(dir) ? { name: name.toLowerCase(), status: "ok", detail: "present; rm, rimraf and fs.rm skip it", counts: false } : { name: name.toLowerCase(), status: "absent", detail: "no trash folder", counts: false };
 }
 
+// src/cloud.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { existsSync as existsSync2, readdirSync as readdirSync2, readFileSync, realpathSync as realpathSync2, statSync } from "node:fs";
+import { posix, win32 } from "node:path";
+var defaultRun2 = (cmd, args) => {
+  try {
+    const r = spawnSync2(cmd, args, { encoding: "utf8", timeout: 5e3, windowsHide: true, maxBuffer: 8 << 20 });
+    if (r.error) return { ok: false, out: "" };
+    return { ok: r.status === 0, out: (r.stdout || "") + (r.status === 0 ? "" : r.stderr || "") };
+  } catch {
+    return { ok: false, out: "" };
+  }
+};
+var realFs = {
+  isDir: (p) => {
+    try {
+      return statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+  isFile: (p) => {
+    try {
+      return statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  },
+  read: (p) => {
+    try {
+      return readFileSync(p, "utf8");
+    } catch {
+      return void 0;
+    }
+  },
+  list: (p) => {
+    try {
+      return readdirSync2(p);
+    } catch {
+      return [];
+    }
+  },
+  real: (p) => {
+    try {
+      return existsSync2(p) ? realpathSync2.native(p) : p;
+    } catch {
+      return p;
+    }
+  }
+};
+var GB = 1024 ** 3;
+var FILE_LIMIT = {
+  "iCloud Drive": [50 * GB, "50 GB"],
+  OneDrive: [250 * GB, "250 GB"],
+  "Google Drive": [5 * 1024 * GB, "5 TB"]
+};
+var HISTORY = {
+  Dropbox: "version history and deleted files, 30+ days by plan",
+  OneDrive: "version history and recycle bin, 30 days (93 for work accounts)",
+  "Google Drive": "file versions for 30 days or 100 versions, trash for 30 days",
+  "iCloud Drive": "Recently Deleted keeps deleted files 30 days, but an overwrite keeps no older version"
+};
+var PROCESS = {
+  darwin: { Dropbox: ["Dropbox"], OneDrive: ["OneDrive"], "Google Drive": ["Google Drive"] },
+  win32: { Dropbox: ["Dropbox.exe"], OneDrive: ["OneDrive.exe"], "Google Drive": ["GoogleDriveFS.exe"] },
+  linux: { Dropbox: ["dropbox"] }
+};
+function skippedName(provider, name) {
+  const n = name.toLowerCase();
+  if (provider === "iCloud Drive") {
+    if (n.endsWith(".nosync")) return ".nosync item";
+    if (n.endsWith(".tmp")) return ".tmp item";
+    return void 0;
+  }
+  const system = ["desktop.ini", "thumbs.db", ".ds_store"];
+  if (provider === "Dropbox") {
+    if ([...system, "icon\r", ".dropbox", ".dropbox.attr"].includes(n)) return "system file";
+    if (n.startsWith("~$") || n.startsWith(".~") || n.startsWith("~") && n.endsWith(".tmp")) return "temporary file";
+    return void 0;
+  }
+  if (provider === "OneDrive") {
+    if (system.includes(n) || n.endsWith(".tmp")) return "temp or system file";
+    if (n.startsWith("~$") || n.includes("_vti_") || n === ".lock" || /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/.test(n)) return "refused name";
+    if (/["*:<>?|]/.test(name) || /^\s|\s$/.test(name)) return "refused characters";
+    return void 0;
+  }
+  if (system.includes(n) || n.endsWith(".tmp") || n.startsWith("~$")) return "temp or system file";
+  return void 0;
+}
+function probeCloud(rootAbs, opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const env = opts.env ?? process.env;
+  const mode = opts.mode ?? env.UNDOMAP_CLOUD ?? "";
+  if (mode === "off") return { probes: [], check: () => void 0 };
+  const fs = opts.fs ?? realFs;
+  const run = opts.run ?? defaultRun2;
+  const P = platform === "win32" ? win32 : posix;
+  const home = opts.home ?? env.HOME ?? env.USERPROFILE ?? "";
+  const fold = platform === "win32" || platform === "darwin";
+  const norm = (p) => fold ? p.toLowerCase() : p;
+  const under2 = (abs, prefix) => {
+    const a = norm(abs);
+    const p = norm(prefix).replace(/[\\/]+$/, "");
+    return a === p || a.startsWith(p + P.sep);
+  };
+  const tilde2 = (p) => home && under2(p, home) ? "~" + p.slice(home.length) : p;
+  const found = [];
+  const add = (provider, root, strong, source) => {
+    if (!root || !fs.isDir(root)) return;
+    const r = fs.real(root);
+    const same = found.find((c) => norm(c.root) === norm(r));
+    if (same) {
+      if (strong && !same.strong) Object.assign(same, { strong, source, provider });
+      return;
+    }
+    found.push({ provider, root: r, strong, source });
+  };
+  const infoFiles = [home && P.join(home, ".dropbox", "info.json"), env.APPDATA && P.join(env.APPDATA, "Dropbox", "info.json"), env.LOCALAPPDATA && P.join(env.LOCALAPPDATA, "Dropbox", "info.json")];
+  for (const f of infoFiles) {
+    if (!f) continue;
+    const raw = fs.read(f);
+    if (!raw) continue;
+    try {
+      for (const acct of Object.values(JSON.parse(raw)))
+        if (acct && typeof acct.path === "string") add("Dropbox", acct.path, true, "Dropbox info.json");
+    } catch {
+    }
+  }
+  if (platform === "win32")
+    for (const k of ["OneDriveCommercial", "OneDriveConsumer", "OneDrive"]) add("OneDrive", env[k], true, `%${k}%`);
+  if (home) {
+    if (platform === "darwin") {
+      add("iCloud Drive", P.join(home, "Library", "Mobile Documents"), true, "iCloud Drive");
+      const cs = P.join(home, "Library", "CloudStorage");
+      for (const n of fs.list(cs)) {
+        if (/^OneDrive/i.test(n)) add("OneDrive", P.join(cs, n), true, "~/Library/CloudStorage");
+        else if (/^GoogleDrive-/i.test(n)) add("Google Drive", P.join(cs, n), true, "~/Library/CloudStorage");
+        else if (/^Dropbox/i.test(n)) add("Dropbox", P.join(cs, n), false, "~/Library/CloudStorage");
+      }
+    }
+    if (platform === "win32") add("iCloud Drive", P.join(home, "iCloudDrive"), true, "iCloud for Windows");
+    for (const n of fs.list(home)) {
+      if (/^OneDrive\b/i.test(n)) add("OneDrive", P.join(home, n), false, "folder name");
+      else if (/^Dropbox\b/i.test(n)) add("Dropbox", P.join(home, n), false, "folder name");
+      else if (/^Google Drive$/i.test(n)) add("Google Drive", P.join(home, n), false, "folder name (legacy Backup and Sync)");
+    }
+  }
+  const gd = /^([A-Za-z]:\\)My Drive(\\|$)/i.exec(platform === "win32" ? rootAbs : "");
+  if (gd) add("Google Drive", gd[1] + "My Drive", fs.isDir(gd[1] + ".shortcut-targets-by-id"), "virtual drive");
+  for (let d = rootAbs; ; d = P.dirname(d)) {
+    if (fs.isFile(P.join(d, ".dropbox")) || fs.isDir(P.join(d, ".dropbox.cache"))) add("Dropbox", d, false, ".dropbox marker");
+    if (P.dirname(d) === d) break;
+  }
+  const roots = found.filter((c) => under2(rootAbs, c.root) || under2(c.root, rootAbs)).sort((a, b) => b.root.length - a.root.length);
+  const probes = [];
+  if (!roots.length) {
+    probes.push({ name: "cloud sync", status: "absent", detail: "not in an iCloud Drive, Dropbox, OneDrive or Google Drive folder", counts: false });
+    return { probes, check: () => void 0 };
+  }
+  let procs;
+  const running = (provider) => {
+    const names = PROCESS[platform]?.[provider];
+    if (!names) return false;
+    if (procs === void 0) {
+      const r = platform === "win32" ? run("tasklist", ["/FO", "CSV", "/NH"]) : run("ps", ["-A", "-o", "comm="]);
+      procs = r.ok ? new Set(
+        r.out.split(/\r?\n/).map((l) => platform === "win32" ? /^"([^"]+)"/.exec(l)?.[1] ?? "" : l.trim().replace(/^.*\//, "")).filter(Boolean).map((s) => s.toLowerCase())
+      ) : null;
+    }
+    if (procs === null) return void 0;
+    return names.some((n) => procs.has(n.toLowerCase()));
+  };
+  for (const c of roots) {
+    const where = `${c.provider} ${tilde2(c.root)}`;
+    if (c.provider === "iCloud Drive") {
+      c.status = "partial";
+      probes.push({ name: "cloud sync", status: "ok", detail: `${where} \xB7 deletes recoverable 30 days, overwrites not versioned: not counted`, counts: false });
+      continue;
+    }
+    const up = c.strong ? running(c.provider) : false;
+    if (c.strong && up) {
+      c.status = "covered";
+      probes.push({ name: "cloud sync", status: "ok", detail: `${where} \xB7 client running \xB7 ${HISTORY[c.provider]}`, counts: true });
+    } else {
+      c.status = "unverified";
+      c.why = !c.strong ? `${c.source} but no client config, may be a stale copy` : up === void 0 ? "couldn't list running apps" : `${c.provider} app not running`;
+      probes.push({ name: "cloud sync", status: "unknown", detail: `${where} \xB7 possible cloud versioning, unverified (${c.why})`, counts: true });
+    }
+  }
+  let lookups = 0;
+  const attrCache = /* @__PURE__ */ new Map();
+  const ignoredAttr = opts.dropboxIgnored ?? ((abs) => {
+    if (platform === "win32") {
+      try {
+        statSync(abs + ":com.dropbox.ignored");
+        return true;
+      } catch (e) {
+        return e.code === "ENOENT" ? false : void 0;
+      }
+    }
+    if (platform === "darwin") {
+      const r2 = run("xattr", [abs]);
+      return r2.ok ? /^(com\.dropbox\.ignored|com\.apple\.fileprovider\.ignore#P)$/m.test(r2.out) : void 0;
+    }
+    const r = run("getfattr", ["--absolute-names", "-n", "user.com.dropbox.ignored", abs]);
+    return r.ok ? true : /no such attribute|no data available/i.test(r.out) ? false : void 0;
+  });
+  const ignored = (abs) => {
+    if (attrCache.has(abs)) return attrCache.get(abs);
+    const v = lookups++ < 200 ? ignoredAttr(abs) : void 0;
+    attrCache.set(abs, v);
+    return v;
+  };
+  const rules = /* @__PURE__ */ new Map();
+  const ignoreRules = (root) => {
+    if (!rules.has(root)) {
+      const text = fs.read(P.join(root, "rules.dropboxignore")) ?? "";
+      const pats = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#") && !l.startsWith("!"));
+      rules.set(root, pats.map((p) => globMatcher(p.replace(/^\//, ""))));
+    }
+    return rules.get(root);
+  };
+  return {
+    probes,
+    check(absIn, facts) {
+      const abs = absIn.length > 1 ? absIn.replace(/(?<=[^\\/:])[\\/]+$/, "") : absIn;
+      const c = roots.find((r) => under2(abs, r.root));
+      if (!c) return void 0;
+      const out = (status, note) => ({ provider: c.provider, status, note, root: c.root });
+      const rel = abs.slice(c.root.length).split(/[\\/]+/).filter(Boolean);
+      for (const seg of rel) {
+        const skip = skippedName(c.provider, seg);
+        if (skip) return out("gap", skip);
+      }
+      const limit = FILE_LIMIT[c.provider];
+      if (limit) {
+        const biggest = facts.dir ? facts.maxFile : facts.bytes;
+        if (biggest !== void 0 && biggest > limit[0]) return out("gap", `a file over the ${limit[1]} limit`);
+      }
+      if (c.status === "partial") return out("partial", HISTORY[c.provider]);
+      if (c.status !== "covered") return out("unverified", c.why ?? "unverified");
+      if (c.provider === "Dropbox") {
+        const relPosix = rel.join("/");
+        const prefixes = rel.map((_, i) => rel.slice(0, i + 1).join("/") + (i < rel.length - 1 || facts.dir ? "/" : ""));
+        if (relPosix && ignoreRules(c.root).some((m) => prefixes.some((p) => m(p)))) return out("gap", "matches rules.dropboxignore");
+        for (let d = abs; under2(d, c.root) && norm(d) !== norm(c.root); d = P.dirname(d)) {
+          const v = ignored(d);
+          if (v === true) return out("gap", "ignore attribute set");
+          if (v === void 0) return out("unverified", platform === "linux" ? "can't read the Dropbox ignore attribute (install attr for getfattr)" : "can't read the Dropbox ignore attribute");
+        }
+      }
+      if (facts.capped && limit) return out("unverified", "too big to check every file against the size limit");
+      return out("covered", HISTORY[c.provider]);
+    }
+  };
+}
+
 // src/collect.ts
 var UsageError = class extends Error {
 };
 function git(cwd, args) {
-  const r = spawnSync2("git", ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", ...args], {
+  const r = spawnSync3("git", ["-c", "core.quotepath=off", "-c", "core.fsmonitor=false", ...args], {
     cwd,
     encoding: "utf8",
     maxBuffer: 1 << 30,
@@ -231,8 +490,8 @@ function gitVersion() {
   return r.ok ? /(\d+\.\d+(\.\d+)?)/.exec(r.out)?.[1] ?? r.out.trim() : null;
 }
 function dirMarker(abs) {
-  if (existsSync2(join2(abs, "pyvenv.cfg"))) return "Python venv: uv sync / pip install";
-  if (existsSync2(join2(abs, "CACHEDIR.TAG"))) return "cache, CACHEDIR.TAG";
+  if (existsSync3(join2(abs, "pyvenv.cfg"))) return "Python venv: uv sync / pip install";
+  if (existsSync3(join2(abs, "CACHEDIR.TAG"))) return "cache, CACHEDIR.TAG";
   return void 0;
 }
 function binaryMarker(abs, size) {
@@ -267,12 +526,12 @@ function collect(rootInput, opts = {}) {
   const cap2 = opts.cap ?? 25e4;
   let st;
   try {
-    st = statSync(rootInput);
+    st = statSync2(rootInput);
   } catch {
     throw new UsageError(`no such directory: ${rootInput}`);
   }
   if (!st.isDirectory()) throw new UsageError(`undomap maps directories; ${rootInput} is a file. Try: undomap ${JSON.stringify(resolve(rootInput, ".."))}`);
-  const root = realpathSync2.native(resolve(rootInput));
+  const root = realpathSync3.native(resolve(rootInput));
   const entries = [];
   const absOf = /* @__PURE__ */ new Map();
   const repos = [];
@@ -287,6 +546,9 @@ function collect(rootInput, opts = {}) {
       opts.onProgress(fileCount);
     }
   };
+  const permanent = (opts.config?.permanent ?? []).map((g) => [g, globMatcher(g)]);
+  const userRegen = (opts.config?.regenerable ?? []).map((g) => globMatcher(g));
+  const permanentOf = (path) => permanent.find(([, m]) => m(path))?.[0];
   const rel = (abs, dir = false) => {
     const r = relative(root, abs).split(sep2).join("/");
     return dir ? r ? r + "/" : "./" : r;
@@ -298,20 +560,20 @@ function collect(rootInput, opts = {}) {
   };
   const realTarget = (abs) => {
     try {
-      return realpathSync2.native(abs);
+      return realpathSync3.native(abs);
     } catch {
       return null;
     }
   };
-  const sizeTree = (start, followEscapes) => {
-    const out = { bytes: 0, files: 0, capped: false, nested: [], links: [] };
+  const sizeTree = (start, followEscapes, carve) => {
+    const out = { bytes: 0, files: 0, maxFile: 0, capped: false, nested: [], links: [], carved: [] };
     const stack = [start];
     let seenHere = 0;
     while (stack.length) {
       const dir = stack.pop();
       let ents;
       try {
-        ents = readdirSync2(dir, { withFileTypes: true });
+        ents = readdirSync3(dir, { withFileTypes: true });
       } catch (e) {
         skipped.push({ path: rel(dir, true), reason: e.code ?? "unreadable" });
         continue;
@@ -328,6 +590,13 @@ function collect(rootInput, opts = {}) {
           stack.length = 0;
           break;
         }
+        if (carve && !d.isSymbolicLink()) {
+          const path = carve(p, d.isDirectory());
+          if (path) {
+            out.carved.push({ abs: p, path, dir: d.isDirectory() });
+            continue;
+          }
+        }
         if (d.isDirectory()) stack.push(p);
         else if (d.isSymbolicLink()) {
           out.files++;
@@ -338,7 +607,9 @@ function collect(rootInput, opts = {}) {
           }
         } else {
           try {
-            out.bytes += lstatSync(p).size;
+            const size = lstatSync(p).size;
+            out.bytes += size;
+            if (size > out.maxFile) out.maxFile = size;
             out.files++;
             tick();
           } catch {
@@ -349,19 +620,28 @@ function collect(rootInput, opts = {}) {
     return out;
   };
   const escapeEntry = (linkAbs, target, repo) => {
-    let s = { bytes: 0, files: 0, capped: false, nested: [], links: [] };
+    let s = { bytes: 0, files: 0, maxFile: 0, capped: false, nested: [], links: [], carved: [] };
     try {
-      s = statSync(target).isDirectory() ? sizeTree(target, false) : { ...s, bytes: statSync(target).size, files: 1 };
+      const size = statSync2(target).size;
+      s = statSync2(target).isDirectory() ? sizeTree(target, false) : { ...s, bytes: size, maxFile: size, files: 1 };
     } catch {
     }
-    push({ path: rel(linkAbs), bytes: s.bytes, files: s.files, capped: s.capped, git: "none", target, repo }, target);
+    push({ path: rel(linkAbs), bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: "none", target, repo }, target);
   };
   const sizedEntry = (abs, path, state, repo) => {
-    const marker = regenerable(path) ? void 0 : dirMarker(abs);
-    const s = sizeTree(abs, !regenerable(path) && !marker);
-    push({ path, bytes: s.bytes, files: s.files, capped: s.capped, git: state, repo, regen: marker }, abs);
+    const named = regenerable(path);
+    const marker = named ? void 0 : dirMarker(abs);
+    const forced = permanentOf(path);
+    const looksRegen = !!(named || marker || userRegen.some((m) => m(path)));
+    const carve = looksRegen && !forced && permanent.length ? (a, dir) => {
+      const r = rel(a, dir);
+      return permanentOf(r) ? r : void 0;
+    } : void 0;
+    const s = sizeTree(abs, !!forced || !named && !marker, carve);
+    push({ path, bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: state, repo, regen: marker, permanent: forced }, abs);
     for (const l of s.links) escapeEntry(l.abs, l.target, repo);
     for (const n of s.nested) scanDir(n);
+    for (const c of s.carved) (c.dir ? sizedEntry : fileEntry)(c.abs, c.path, state, repo);
   };
   const fileEntry = (abs, path, state, repo) => {
     try {
@@ -371,7 +651,7 @@ function collect(rootInput, opts = {}) {
         if (t && !inside(t) && writable(t)) return escapeEntry(abs, t, repo);
       }
       tick();
-      push({ path, bytes: ls.size, files: 1, git: state, repo, regen: ls.isFile() ? binaryMarker(abs, ls.size) : void 0 }, abs);
+      push({ path, bytes: ls.size, files: 1, maxFile: ls.size, git: state, repo, regen: ls.isFile() ? binaryMarker(abs, ls.size) : void 0, permanent: permanentOf(path) }, abs);
     } catch {
     }
   };
@@ -398,7 +678,7 @@ function collect(rootInput, opts = {}) {
         const abs = join2(top, p);
         const state = kind === "?" ? "untracked" : "ignored";
         if (p.endsWith("/")) {
-          if (existsSync2(join2(abs, ".git"))) {
+          if (existsSync3(join2(abs, ".git"))) {
             scanDir(abs);
             continue;
           }
@@ -433,7 +713,7 @@ function collect(rootInput, opts = {}) {
       if (dirty.has(p)) continue;
       const abs = join2(top, p);
       if (mode === "160000") {
-        if (existsSync2(join2(abs, ".git"))) scanDir(abs);
+        if (existsSync3(join2(abs, ".git"))) scanDir(abs);
         continue;
       }
       try {
@@ -462,23 +742,25 @@ function collect(rootInput, opts = {}) {
       if (unpushed > 0) push({ path: repoDir + ".git/", bytes: 0, files: 0, git: "clean", repoIssue: "unpushed", unpushed, repo }, top);
     }
     if (hasHead && !remotes.length) {
-      const gd = git(top, ["rev-parse", "--absolute-git-dir"]).out.trim();
+      const gdRaw = git(top, ["rev-parse", "--absolute-git-dir"]).out.trim();
+      const gd = gdRaw ? realTarget(resolve(gdRaw)) ?? resolve(gdRaw) : "";
       const commits = Number(git(top, ["rev-list", "--count", "--all"]).out.trim()) || 0;
-      const s = gd ? sizeTree(gd, false) : { bytes: 0, files: 0, capped: false };
-      push({ path: repoDir + ".git/", bytes: s.bytes, files: s.files, capped: s.capped, git: "clean", repoIssue: "no-remote", unpushed: commits, repo }, gd || top);
+      const s = gd ? sizeTree(gd, false) : { bytes: 0, files: 0, maxFile: 0, capped: false };
+      push({ path: repoDir + ".git/", bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: "clean", repoIssue: "no-remote", unpushed: commits, repo }, gd || top);
     }
     repos.push({ path: repo || ".", remote: remotes[0] ?? null, unpushed, branch });
   };
   const walkPlain = (dir) => {
     let ents;
     try {
-      ents = readdirSync2(dir, { withFileTypes: true });
+      ents = readdirSync3(dir, { withFileTypes: true });
     } catch (e) {
       skipped.push({ path: rel(dir, true), reason: e.code ?? "unreadable" });
       return;
     }
     let looseBytes = 0;
     let looseFiles = 0;
+    let looseMax = 0;
     for (const d of ents) {
       if (d.name === ".git") continue;
       const abs = join2(dir, d.name);
@@ -487,11 +769,13 @@ function collect(rootInput, opts = {}) {
         if (t && !inside(t) && writable(t)) escapeEntry(abs, t);
         else looseFiles++;
       } else if (d.isDirectory()) {
-        if (existsSync2(join2(abs, ".git"))) scanDir(abs);
+        if (existsSync3(join2(abs, ".git"))) scanDir(abs);
         else sizedEntry(abs, rel(abs, true), "none", void 0);
       } else {
         try {
-          looseBytes += lstatSync(abs).size;
+          const size = lstatSync(abs).size;
+          looseBytes += size;
+          if (size > looseMax) looseMax = size;
           looseFiles++;
           tick();
         } catch {
@@ -500,14 +784,14 @@ function collect(rootInput, opts = {}) {
     }
     if (looseFiles) {
       const base2 = rel(dir, true);
-      push({ path: (base2 === "./" ? "" : base2) + "*", bytes: looseBytes, files: looseFiles, git: "none" }, dir);
+      push({ path: (base2 === "./" ? "" : base2) + "*", bytes: looseBytes, files: looseFiles, maxFile: looseMax, git: "none" }, dir);
     }
   };
   const scanDir = (dir) => {
-    if (gitOk && existsSync2(join2(dir, ".git"))) {
+    if (gitOk && existsSync3(join2(dir, ".git"))) {
       const top = git(dir, ["rev-parse", "--show-toplevel"]);
       if (top.ok && top.out.trim()) {
-        const t = realpathSync2.native(resolve(top.out.trim()));
+        const t = realpathSync3.native(resolve(top.out.trim()));
         if (t === dir) return scanRepo(dir);
       }
     }
@@ -515,13 +799,13 @@ function collect(rootInput, opts = {}) {
   };
   if (gitOk) {
     const top = git(root, ["rev-parse", "--show-toplevel"]);
-    const t = top.ok && top.out.trim() ? realpathSync2.native(resolve(top.out.trim())) : null;
+    const t = top.ok && top.out.trim() ? realpathSync3.native(resolve(top.out.trim())) : null;
     if (t && t !== root) {
       const sub = relative(t, root);
       const ignored = git(t, ["check-ignore", "-q", "--", sub.split(sep2).join("/") + "/"]).ok;
       if (ignored) {
         const s = sizeTree(root, true);
-        push({ path: "./", bytes: s.bytes, files: s.files, capped: s.capped, git: "ignored" }, root);
+        push({ path: "./", bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: "ignored" }, root);
         for (const l of s.links) escapeEntry(l.abs, l.target);
         for (const n of s.nested) scanDir(n);
       } else scanRepo(t, sub);
@@ -530,17 +814,29 @@ function collect(rootInput, opts = {}) {
   } else walkPlain(root);
   const platform = opts.platform ?? process.platform;
   const snap = opts.snapshots ?? probeSnapshots(root, { platform, mode: opts.noProbe ? "off" : void 0 });
+  let cloud;
+  try {
+    cloud = probeCloud(root, { platform, ...opts.cloud, ...opts.noProbe ? { mode: "off" } : {} });
+  } catch (e) {
+    cloud = { probes: [{ name: "cloud sync", status: "unknown", detail: `probe failed: ${e.message}`, counts: true }], check: () => void 0 };
+  }
   for (const e of entries) {
-    const fragile = e.repoIssue === "no-remote" || e.target || !e.aggregate && !e.repoIssue && e.git !== "dirty" && e.git !== "clean" && !e.regen && !regenerable(e.path);
+    const fragile = e.repoIssue === "no-remote" || e.target || !e.aggregate && !e.repoIssue && e.git !== "dirty" && e.git !== "clean" && (!!e.permanent || !e.regen && !regenerable(e.path));
     if (fragile) {
-      const label2 = snap.covers(absOf.get(e) ?? root);
+      const abs = absOf.get(e) ?? root;
+      const label2 = snap.covers(abs);
       if (label2) e.snapshot = label2;
+      else {
+        const c = cloud.check(abs, { bytes: e.bytes, maxFile: e.maxFile, dir: e.path.endsWith("/") || e.path.endsWith("*"), capped: e.capped });
+        if (c) e.cloud = c;
+      }
     }
   }
   const gv = gitVersion();
   const probes = [
     gv ? { name: "git", status: "ok", detail: gv, counts: true } : { name: "git", status: "absent", detail: "git not found: every path is graded as outside git", counts: true },
-    ...snap.probes
+    ...snap.probes,
+    ...cloud.probes
   ];
   return {
     root,
@@ -564,6 +860,21 @@ var q = (p) => /^[\w@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`;
 var slug = (p) => p.replace(/\/+$/, "").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "root";
 var noSlash = (p) => p.replace(/\/+$/, "") || ".";
 function fixFor(f, ctx) {
+  const fix = baseFix(f, ctx);
+  return fix && f.zone === "VE" && f.cloud ? { ...fix, say: cloudSay(f.cloud, fix.say) } : fix;
+}
+function cloudSay(c, say) {
+  if (c.status === "unverified") return `${say} \xB7 possible ${c.provider} versioning, unverified`;
+  if (c.status === "partial") return `${say} \xB7 ${c.provider} only brings back deletes, not overwrites`;
+  return `${say} \xB7 ${c.provider} skips it: ${c.note}`;
+}
+function cloudCheck(c) {
+  if (/not running/.test(c.note)) return `start ${c.provider}, let it finish syncing, then rerun undomap`;
+  if (/stale copy/.test(c.note)) return `if ${c.provider} really syncs this folder, start its app and rerun undomap; if not, nothing versions it`;
+  if (/install attr/.test(c.note)) return "install attr (getfattr), then rerun undomap";
+  return `check the ${c.provider} app shows these synced, then rerun undomap`;
+}
+function baseFix(f, ctx) {
   const p = noSlash(f.path);
   const name = `${slug(ctx.rootName)}-${slug(f.path)}`;
   switch (f.kind) {
@@ -573,7 +884,7 @@ function fixFor(f, ctx) {
       if (f.secret)
         return {
           say: "keep a copy outside the tree (password manager or ~/.config)",
-          run: `mkdir -p -m 700 ~/.undomap-safe && cp -Rp ${q(p)} ~/.undomap-safe/${q(name)}`,
+          run: `mkdir -p -m 700 ${SAFE} && cp -Rp ${q(p)} ${SAFE}/${q(name)}`,
           cost: "seconds"
         };
       const binary = f.bytes > MEDIA_SMALL && (BINARY.test(p) || f.path.endsWith("/") && f.bytes / Math.max(1, f.files) > 1024 * 1024);
@@ -586,10 +897,10 @@ function fixFor(f, ctx) {
       if (f.kind === "untracked")
         return { say: "commit it, then git checkout brings it back", run: `git add -- ${q(p)} && git commit -m ${q(`track ${p}`)}`, cost: "seconds" };
       if (f.kind === "no-git")
-        return f.path.endsWith("/") ? { say: "give it local history in one command", run: `git -C ${q(p)} init -q && git -C ${q(p)} add -A && git -C ${q(p)} commit -qm "undomap: baseline"`, cost: "seconds" } : { say: "copy it outside the agent's workspace", run: `mkdir -p ~/.undomap-safe && cp -p ${q(p)} ~/.undomap-safe/`, cost: "seconds" };
+        return f.path.endsWith("/") ? { say: "give it local history in one command", run: `git -C ${q(p)} init -q && git -C ${q(p)} add -A && git -C ${q(p)} commit -qm "undomap: baseline"`, cost: "seconds" } : { say: "copy it outside the agent's workspace", run: `mkdir -p -m 700 ${SAFE} && cp -p ${q(p)} ${SAFE}/`, cost: "seconds" };
       return {
         say: "ignored on purpose, so don't commit it: keep a copy outside the tree",
-        run: `mkdir -p ~/.undomap-safe && tar -czf ~/.undomap-safe/${q(name)}.tgz ${q(p)}`,
+        run: `mkdir -p -m 700 ${SAFE} && tar -czf ${SAFE}/${q(name + ".tgz")} ${q(p)}`,
         cost: "seconds"
       };
     }
@@ -617,6 +928,88 @@ function snapshotFix(platform) {
   if (platform === "darwin") return { say: "turn on Time Machine: hourly local snapshots turn most of Zone VE into slow undo", run: "sudo tmutil enable   # then pick a backup disk in System Settings", cost: "setup" };
   if (platform === "win32") return { say: "turn on File History or System Protection (VSS) for this drive", run: "control /name Microsoft.FileHistory", cost: "setup" };
   return { say: "snapshot the workspace: btrfs/ZFS with snapper, or restic/borg on a timer", run: "sudo snapper -c home create-config /home   # btrfs example", cost: "setup" };
+}
+
+// src/version.ts
+var VERSION = "0.1.0";
+
+// src/grade.ts
+var machineSnapshots = (probes) => probes.some((p) => p.counts && p.status === "ok" && p.name !== "git" && p.name !== "cloud sync");
+var ZONE_ORDER = { VE: 0, AE: 1, X: 2 };
+function classify(e, config = {}) {
+  const base2 = { path: e.path, bytes: e.bytes, files: e.files, capped: !!e.capped, repo: e.repo, secret: false, target: e.target, unpushed: e.unpushed };
+  const userRegen = (config.regenerable ?? []).some((g) => globMatch(g, e.path));
+  const userBacked = (config.backedUp ?? []).some((g) => globMatch(g, e.path)) || e.backedUp;
+  const c = e.cloud;
+  const cloud = c ? { cloud: { provider: c.provider, status: c.status, note: c.note } } : {};
+  const synced = c?.status === "covered";
+  const cloudNote = !c || synced ? "" : c.status === "unverified" ? ` \xB7 possible ${c.provider} versioning, unverified` : c.status === "partial" ? ` \xB7 ${c.provider} keeps deletes 30 days, not overwrites` : ` \xB7 ${c.provider} skips it (${c.note})`;
+  if (e.repoIssue === "no-remote") {
+    if (userBacked) return { ...base2, zone: "AE", kind: "backed-up", why: "no remote, but backed up per .undomap.json" };
+    if (e.snapshot) return { ...base2, zone: "AE", kind: "snapshot", why: `no remote; in ${e.snapshot}` };
+    if (synced) return { ...base2, ...cloud, zone: "AE", kind: "cloud", why: `no remote; .git syncs to ${c.provider} (${c.note})` };
+    return { ...base2, ...cloud, zone: "VE", kind: "no-remote", why: `repo with no remote: .git is the only copy of its history${cloudNote}` };
+  }
+  if (e.repoIssue === "unpushed") return { ...base2, zone: "AE", kind: "unpushed", why: `${e.unpushed} commit${e.unpushed === 1 ? "" : "s"} not on any remote` };
+  if (e.aggregate) return { ...base2, zone: "X", kind: "tracked", why: "clean tracked files: git checkout / git restore" };
+  if (e.git === "dirty") return { ...base2, zone: "AE", kind: "dirty", why: "tracked, uncommitted edits: last commit comes back, the edits don't" };
+  if (e.target) {
+    if (e.snapshot) return { ...base2, zone: "AE", kind: "snapshot", why: `link to ${e.target}; target in ${e.snapshot}` };
+    if (synced) return { ...base2, ...cloud, zone: "AE", kind: "cloud", why: `link to ${e.target}; target syncs to ${c.provider} (${c.note})` };
+    return { ...base2, ...cloud, zone: "VE", kind: "symlink-escape", why: `symlink out of the map \xB7 the agent writes through it${cloudNote}` };
+  }
+  const forcedBy = e.permanent ?? (config.permanent ?? []).find((g) => globMatch(g, e.path));
+  const looked = userRegen ? "per your .undomap.json" : e.regen ?? regenerable(e.path);
+  const gitWhat = e.git === "ignored" ? "gitignored \xB7 " : e.git === "untracked" ? "untracked \xB7 " : "";
+  if (looked && !forcedBy) return { ...base2, zone: "AE", kind: "regenerable", why: `${gitWhat}regenerable (${looked})` };
+  const secret = isSecret(e.path);
+  const crit = critical(e.path);
+  const what = e.git === "ignored" ? "gitignored" : e.git === "untracked" ? "untracked" : "outside any git repo";
+  const kind = e.git === "ignored" ? "ignored" : e.git === "untracked" ? "untracked" : "no-git";
+  const forced = forcedBy ? { forcedBy } : {};
+  const marked = forcedBy ? ", marked permanent" : "";
+  if (userBacked) return { ...base2, ...forced, secret, zone: "AE", kind: "backed-up", why: `${what}${marked}, but backed up per .undomap.json` };
+  if (e.snapshot) return { ...base2, ...forced, secret, zone: "AE", kind: "snapshot", why: `${what}${marked}; restorable from ${e.snapshot}` };
+  if (synced) return { ...base2, ...forced, ...cloud, secret, zone: "AE", kind: "cloud", why: `${what}${marked}; in ${c.provider} (${c.note})` };
+  const extra = secret ? " \xB7 looks like secrets" : crit ? ` \xB7 ${crit}` : "";
+  const note = !forcedBy ? "" : userRegen ? " \xB7 on both lists in .undomap.json: permanent wins over regenerable" : looked ? ` \xB7 looks regenerable (${looked}) but .undomap.json marks it permanent` : " \xB7 permanent per .undomap.json";
+  return { ...base2, ...forced, ...cloud, secret, zone: "VE", kind, why: `${what}${extra}${note}${cloudNote}` };
+}
+function grade(inv, opts = {}) {
+  const config = opts.config ?? {};
+  const threshold = Math.max(0, opts.thresholdBytes ?? 0);
+  const ctx = { platform: inv.platform, rootName: inv.rootName, snapshots: machineSnapshots(inv.probes) };
+  const findings = [];
+  for (const e of inv.entries) {
+    if (e.bytes === 0 && e.files === 0 && !e.repoIssue) continue;
+    const f = classify(e, config);
+    const fix = fixFor(f, ctx);
+    if (fix) f.fix = fix;
+    findings.push(f);
+  }
+  findings.sort((a, b) => ZONE_ORDER[a.zone] - ZONE_ORDER[b.zone] || b.bytes - a.bytes || a.path.localeCompare(b.path));
+  const totals = { VE: { bytes: 0, places: 0, files: 0 }, AE: { bytes: 0, places: 0, files: 0 }, X: { bytes: 0, places: 0, files: 0 } };
+  for (const f of findings) {
+    const t = totals[f.zone];
+    t.bytes += f.bytes;
+    t.files += f.files;
+    t.places += f.zone === "X" ? 0 : 1;
+  }
+  totals.X.places = findings.filter((f) => f.zone === "X").length;
+  return {
+    tool: "undomap",
+    version: VERSION,
+    root: inv.root,
+    scannedAt: inv.scannedAt,
+    durationMs: inv.durationMs,
+    repos: inv.repos,
+    probes: inv.probes,
+    totals,
+    findings,
+    skipped: inv.skipped,
+    exitCode: totals.VE.places > 0 && totals.VE.bytes > threshold ? 1 : 0,
+    thresholdBytes: threshold
+  };
 }
 
 // src/format.ts
@@ -718,7 +1111,7 @@ function formatText(r, o) {
   });
   out.push(`  ${k.dim("probes")}  ${probeBits.join(k.dim("  \xB7  "))}`);
   if (r.skipped.length) out.push(`  ${k.dim("skipped")} ${r.skipped.length} unreadable: ${r.skipped.slice(0, 3).map((s) => `${s.path} (${s.reason})`).join(", ")}${r.skipped.length > 3 ? ", \u2026" : ""}`);
-  const snapOk = r.probes.some((p) => p.counts && p.name !== "git" && p.status === "ok");
+  const snapOk = machineSnapshots(r.probes);
   if (ve.length && !o.fix) {
     const top = ve[0];
     out.push("");
@@ -730,6 +1123,17 @@ function formatText(r, o) {
     out.push("");
     out.push(`  ${k.copper("whole map")}  ${s.say}`);
     if (o.fix && s.run) out.push(`    ${k.dim("$")} ${s.run}`);
+  }
+  const unverified = /* @__PURE__ */ new Map();
+  for (const f of ve)
+    if (f.cloud?.status === "unverified") {
+      const key = f.cloud.provider + "\0" + f.cloud.note;
+      unverified.set(key, { c: f.cloud, n: (unverified.get(key)?.n ?? 0) + 1 });
+    }
+  for (const { c, n } of unverified.values()) {
+    out.push("");
+    out.push(`  ${k.copper("cloud sync")}  ${c.provider} may keep versions of ${n === ve.length ? n === 1 ? "the place" : n === 2 ? "both places" : `all ${n} places` : plural(n, "place")} above, but undomap can't confirm it (${c.note})`);
+    out.push(`    ${k.dim("\u2192")} ${cloudCheck(c)}`);
   }
   if (ve.length && !o.fix) {
     out.push("");
@@ -772,107 +1176,51 @@ function formatJson(r) {
 
 // src/mcp.ts
 import { createInterface } from "node:readline";
+import { resolve as resolve3 } from "node:path";
+
+// src/run.ts
+import { realpathSync as realpathSync4, statSync as statSync3 } from "node:fs";
 import { resolve as resolve2 } from "node:path";
 
 // src/config.ts
-import { existsSync as existsSync3, readFileSync } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
 import { join as join3 } from "node:path";
 function loadConfig(root, explicit) {
   const file = explicit ?? join3(root, ".undomap.json");
-  if (!existsSync3(file)) {
+  if (!existsSync4(file)) {
     if (explicit) throw new UsageError(`config not found: ${explicit}`);
     return { config: {}, file: null };
   }
   let raw;
   try {
-    raw = JSON.parse(readFileSync(file, "utf8"));
+    raw = JSON.parse(readFileSync2(file, "utf8"));
   } catch (e) {
     throw new UsageError(`${file}: not valid JSON (${e.message})`);
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new UsageError(`${file}: expected an object like {"regenerable": [], "backedUp": []}`);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new UsageError(`${file}: expected an object like {"permanent": [], "regenerable": [], "backedUp": []}`);
   const out = {};
   for (const [k, v] of Object.entries(raw)) {
     if (k === "$schema") continue;
-    if (k !== "regenerable" && k !== "backedUp") throw new UsageError(`${file}: unknown key "${k}" (known: regenerable, backedUp)`);
+    if (k !== "regenerable" && k !== "backedUp" && k !== "permanent") throw new UsageError(`${file}: unknown key "${k}" (known: permanent, regenerable, backedUp)`);
     if (!Array.isArray(v) || !v.every((s) => typeof s === "string")) throw new UsageError(`${file}: "${k}" must be an array of path patterns`);
     out[k] = v;
   }
   return { config: out, file };
 }
 
-// src/version.ts
-var VERSION = "0.1.0";
-
-// src/grade.ts
-var ZONE_ORDER = { VE: 0, AE: 1, X: 2 };
-function classify(e, config = {}) {
-  const base2 = { path: e.path, bytes: e.bytes, files: e.files, capped: !!e.capped, repo: e.repo, secret: false, target: e.target, unpushed: e.unpushed };
-  const userRegen = (config.regenerable ?? []).find((g) => globMatch(g, e.path));
-  const userBacked = (config.backedUp ?? []).some((g) => globMatch(g, e.path)) || e.backedUp;
-  if (e.repoIssue === "no-remote") {
-    if (userBacked) return { ...base2, zone: "AE", kind: "backed-up", why: "no remote, but backed up per .undomap.json" };
-    if (e.snapshot) return { ...base2, zone: "AE", kind: "snapshot", why: `no remote; in ${e.snapshot}` };
-    return { ...base2, zone: "VE", kind: "no-remote", why: "repo with no remote: .git is the only copy of its history" };
-  }
-  if (e.repoIssue === "unpushed") return { ...base2, zone: "AE", kind: "unpushed", why: `${e.unpushed} commit${e.unpushed === 1 ? "" : "s"} not on any remote` };
-  if (e.aggregate) return { ...base2, zone: "X", kind: "tracked", why: "clean tracked files: git checkout / git restore" };
-  if (e.git === "dirty") return { ...base2, zone: "AE", kind: "dirty", why: "tracked, uncommitted edits: last commit comes back, the edits don't" };
-  if (e.target) {
-    if (e.snapshot) return { ...base2, zone: "AE", kind: "snapshot", why: `link to ${e.target}; target in ${e.snapshot}` };
-    return { ...base2, zone: "VE", kind: "symlink-escape", why: "symlink out of the map \xB7 the agent writes through it" };
-  }
-  const regen = userRegen ? "per your .undomap.json" : e.regen ?? regenerable(e.path);
-  if (regen) return { ...base2, zone: "AE", kind: "regenerable", why: `${e.git === "ignored" ? "gitignored \xB7 " : e.git === "untracked" ? "untracked \xB7 " : ""}regenerable (${regen})` };
-  const secret = isSecret(e.path);
-  const crit = critical(e.path);
-  const what = e.git === "ignored" ? "gitignored" : e.git === "untracked" ? "untracked" : "outside any git repo";
-  const kind = e.git === "ignored" ? "ignored" : e.git === "untracked" ? "untracked" : "no-git";
-  if (userBacked) return { ...base2, secret, zone: "AE", kind: "backed-up", why: `${what}, but backed up per .undomap.json` };
-  if (e.snapshot) return { ...base2, secret, zone: "AE", kind: "snapshot", why: `${what}; restorable from ${e.snapshot}` };
-  const extra = secret ? " \xB7 looks like secrets" : crit ? ` \xB7 ${crit}` : "";
-  return { ...base2, secret, zone: "VE", kind, why: `${what}${extra}` };
-}
-function grade(inv, opts = {}) {
-  const config = opts.config ?? {};
-  const threshold = Math.max(0, opts.thresholdBytes ?? 0);
-  const ctx = { platform: inv.platform, rootName: inv.rootName, snapshots: inv.probes.some((p) => p.counts && p.status === "ok" && p.name !== "git") };
-  const findings = [];
-  for (const e of inv.entries) {
-    if (e.bytes === 0 && e.files === 0 && !e.repoIssue) continue;
-    const f = classify(e, config);
-    const fix = fixFor(f, ctx);
-    if (fix) f.fix = fix;
-    findings.push(f);
-  }
-  findings.sort((a, b) => ZONE_ORDER[a.zone] - ZONE_ORDER[b.zone] || b.bytes - a.bytes || a.path.localeCompare(b.path));
-  const totals = { VE: { bytes: 0, places: 0, files: 0 }, AE: { bytes: 0, places: 0, files: 0 }, X: { bytes: 0, places: 0, files: 0 } };
-  for (const f of findings) {
-    const t = totals[f.zone];
-    t.bytes += f.bytes;
-    t.files += f.files;
-    t.places += f.zone === "X" ? 0 : 1;
-  }
-  totals.X.places = findings.filter((f) => f.zone === "X").length;
-  return {
-    tool: "undomap",
-    version: VERSION,
-    root: inv.root,
-    scannedAt: inv.scannedAt,
-    durationMs: inv.durationMs,
-    repos: inv.repos,
-    probes: inv.probes,
-    totals,
-    findings,
-    skipped: inv.skipped,
-    exitCode: totals.VE.places > 0 && totals.VE.bytes > threshold ? 1 : 0,
-    thresholdBytes: threshold
-  };
-}
-
 // src/run.ts
 function mapPath(path, opts = {}) {
-  const inv = collect(path, opts);
-  const config = opts.config ?? loadConfig(inv.root, opts.configFile).config;
+  let config = opts.config;
+  if (!config) {
+    let root;
+    try {
+      root = statSync3(path).isDirectory() ? realpathSync4.native(resolve2(path)) : void 0;
+    } catch {
+    }
+    if (root) config = loadConfig(root, opts.configFile).config;
+  }
+  const inv = collect(path, { ...opts, config });
+  config ??= loadConfig(inv.root, opts.configFile).config;
   return grade(inv, { thresholdBytes: opts.thresholdBytes, config });
 }
 
@@ -881,7 +1229,7 @@ var PATH_PROP = { type: "string", description: "Directory to map (absolute, or r
 var TOOLS = [
   {
     name: "map_report",
-    description: "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. Read-only: never writes, deletes or runs fixes.",
+    description: "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot or by cloud-sync version history undomap could verify), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. Read-only: never writes, deletes or runs fixes.",
     inputSchema: { type: "object", properties: { path: PATH_PROP }, required: [] },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
@@ -897,7 +1245,7 @@ var TOOLS = [
   }
 ];
 function callTool(name, args, cwd = process.cwd()) {
-  const path = resolve2(cwd, typeof args.path === "string" && args.path ? args.path : ".");
+  const path = resolve3(cwd, typeof args.path === "string" && args.path ? args.path : ".");
   if (name === "map_report") {
     const r = mapPath(path);
     return { text: formatMarkdown(r) + "\n\n```json\n" + JSON.stringify({ root: r.root, totals: r.totals, findings: r.findings.slice(0, 60), probes: r.probes, repos: r.repos }, null, 2) + "\n```" };
@@ -911,7 +1259,7 @@ function callTool(name, args, cwd = process.cwd()) {
         {
           root: r.root,
           summary: ve.length ? `${fmtBytes(r.totals.VE.bytes)} across ${r.totals.VE.places} place(s) an agent can erase forever` : "nothing an agent can erase for good",
-          permanent: ve.slice(0, limit).map((f) => ({ path: f.path, bytes: f.bytes, size: fmtBytes(f.bytes), kind: f.kind, why: f.why, secret: f.secret, fix: f.fix?.say, run: f.fix?.run })),
+          permanent: ve.slice(0, limit).map((f) => ({ path: f.path, bytes: f.bytes, size: fmtBytes(f.bytes), kind: f.kind, why: f.why, secret: f.secret, forcedBy: f.forcedBy, cloud: f.cloud, fix: f.fix?.say, run: f.fix?.run })),
           more: Math.max(0, ve.length - limit)
         },
         null,
@@ -972,13 +1320,14 @@ Options
       --all                      list every Zone VE place (default: top 12; secrets always shown)
       --max-permanent <size>     permanent bytes allowed before exit 1 (default 0), e.g. 1MB
       --config <file>            config file (default: <path>/.undomap.json)
-      --no-probe                 skip snapshot probes (Time Machine, btrfs/ZFS, Timeshift)
+      --no-probe                 skip snapshot and cloud-sync probes (Time Machine, btrfs/ZFS, Timeshift, Dropbox\u2026)
       --no-color                 plain output (also NO_COLOR=1)
   -h, --help / -v, --version
 
 Zones (FEMA flood-map letters)
   VE  permanent   gitignored or untracked and not regenerable, outside git, symlinks out, repo with no remote
-  AE  slow undo   regenerable (node_modules, dist, .venv\u2026), uncommitted edits, unpushed commits, in a local snapshot
+  AE  slow undo   regenerable (node_modules, dist, .venv\u2026), uncommitted edits, unpushed commits, in a snapshot,
+                  in a cloud folder whose version history undomap could verify
   X   undoable    clean tracked files: git checkout brings them back
 
 Exit codes: 0 nothing permanent \xB7 1 something in Zone VE \xB7 2 usage or hard error
@@ -1058,7 +1407,7 @@ async function main(argv, io = defaultIo()) {
   if (a.pos.length > 1) throw new UsageError(`one path at a time (got ${a.pos.length}); run undomap once per directory`);
   if (a.flags.json && a.flags.markdown) throw new UsageError("pick one of --json or --markdown");
   const path = resolvePath(io.cwd, a.pos[0] ?? ".");
-  if (a.pos[0] && !existsSync4(path) && !/[\\/.]/.test(a.pos[0])) {
+  if (a.pos[0] && !existsSync5(path) && !/[\\/.]/.test(a.pos[0])) {
     const near = nearest(a.pos[0], COMMANDS);
     if (near) throw new UsageError(`no such directory: ${a.pos[0]} (did you mean \`undomap ${near}\`?)`);
   }
@@ -1104,7 +1453,7 @@ function isEntryPoint() {
   if (!arg) return false;
   const real = (p) => {
     try {
-      return realpathSync3(p);
+      return realpathSync5(p);
     } catch {
       return p;
     }

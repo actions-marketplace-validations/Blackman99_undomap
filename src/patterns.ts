@@ -74,13 +74,12 @@ export function critical(path: string): string | undefined {
 }
 
 /** Tiny glob for config entries. "dir/" = that directory (and below); "a/*.x" = relative glob; "*.x" = any basename. */
-export function globMatch(pattern: string, path: string): boolean {
+export function globMatcher(pattern: string): (path: string) => boolean {
   const p = pattern.trim().replace(/^\.\//, "");
-  if (!p) return false;
+  if (!p) return () => false;
   if (p.endsWith("/")) {
     const anchored = p.slice(0, -1).includes("/");
-    if (path === p || path.startsWith(p)) return true;
-    return !anchored && ("/" + path).includes("/" + p);
+    return (path) => path === p || path.startsWith(p) || (!anchored && ("/" + path).includes("/" + p));
   }
   const re = new RegExp(
     "^" +
@@ -90,6 +89,10 @@ export function globMatch(pattern: string, path: string): boolean {
         .join(".*") +
       "$",
   );
-  const subject = p.includes("/") ? path.replace(/\/+$/, "") : base(path);
-  return re.test(subject);
+  const rel = p.includes("/");
+  return (path) => re.test(rel ? path.replace(/\/+$/, "") : base(path));
+}
+
+export function globMatch(pattern: string, path: string): boolean {
+  return globMatcher(pattern)(path);
 }

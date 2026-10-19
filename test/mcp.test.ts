@@ -21,7 +21,7 @@ test("MCP stdio: initialize, tools/list, list_permanent, map_report", () => {
     const r = spawnSync(process.execPath, ["--import", "tsx", join(ROOT, "src", "cli.ts"), "mcp"], {
       input: msgs.map((m) => JSON.stringify(m)).join("\n") + "\n",
       encoding: "utf8",
-      env: { ...process.env, UNDOMAP_SNAPSHOTS: "off" },
+      env: { ...process.env, UNDOMAP_SNAPSHOTS: "off", UNDOMAP_CLOUD: "off" },
     });
     const lines = r.stdout.trim().split("\n").map((l) => JSON.parse(l));
     const by = Object.fromEntries(lines.map((l) => [l.id, l]));

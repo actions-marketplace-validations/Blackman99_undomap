@@ -2,9 +2,10 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, closeSync, constants, existsSync, lstatSync, openSync, readSync, readdirSync, realpathSync, statSync, type Dirent } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { regenerable } from "./patterns.js";
+import { globMatcher, regenerable } from "./patterns.js";
 import { probeSnapshots, type SnapshotInfo } from "./snapshots.js";
-import type { Inventory } from "./grade.js";
+import { probeCloud, type CloudOptions } from "./cloud.js";
+import type { Config, Inventory } from "./grade.js";
 import type { GitState, Probe, RawEntry, Report } from "./types.js";
 
 export class UsageError extends Error {}
@@ -17,6 +18,10 @@ export interface CollectOptions {
   snapshots?: SnapshotInfo;
   noProbe?: boolean;
   platform?: string;
+  /** `.undomap.json`: `permanent` patterns are carved out of regenerable folders while sizing. */
+  config?: Config;
+  /** Cloud-sync probe inputs (home, env, process runner, fs): tests inject fixtures here. */
+  cloud?: CloudOptions;
 }
 
 interface GitResult {
@@ -85,10 +90,16 @@ function writable(abs: string): boolean {
 interface Sized {
   bytes: number;
   files: number;
+  maxFile: number;
   capped: boolean;
   nested: string[];
   links: { abs: string; target: string }[];
+  /** Descendants matching a `permanent` pattern: reported as their own places, not counted here. */
+  carved: { abs: string; path: string; dir: boolean }[];
 }
+
+/** Returns the relative path when a descendant should be carved out of the place being sized. */
+type Carve = (abs: string, dir: boolean) => string | undefined;
 
 export function collect(rootInput: string, opts: CollectOptions = {}): Inventory {
   const t0 = Date.now();
@@ -116,6 +127,10 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
     }
   };
 
+  const permanent = (opts.config?.permanent ?? []).map((g) => [g, globMatcher(g)] as const);
+  const userRegen = (opts.config?.regenerable ?? []).map((g) => globMatcher(g));
+  const permanentOf = (path: string) => permanent.find(([, m]) => m(path))?.[0];
+
   const rel = (abs: string, dir = false) => {
     const r = relative(root, abs).split(sep).join("/");
     return dir ? (r ? r + "/" : "./") : r;
@@ -133,8 +148,8 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
     }
   };
 
-  const sizeTree = (start: string, followEscapes: boolean): Sized => {
-    const out: Sized = { bytes: 0, files: 0, capped: false, nested: [], links: [] };
+  const sizeTree = (start: string, followEscapes: boolean, carve?: Carve): Sized => {
+    const out: Sized = { bytes: 0, files: 0, maxFile: 0, capped: false, nested: [], links: [], carved: [] };
     const stack = [start];
     let seenHere = 0;
     while (stack.length) {
@@ -158,6 +173,13 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
           stack.length = 0;
           break;
         }
+        if (carve && !d.isSymbolicLink()) {
+          const path = carve(p, d.isDirectory());
+          if (path) {
+            out.carved.push({ abs: p, path, dir: d.isDirectory() });
+            continue;
+          }
+        }
         if (d.isDirectory()) stack.push(p);
         else if (d.isSymbolicLink()) {
           out.files++;
@@ -168,7 +190,9 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
           }
         } else {
           try {
-            out.bytes += lstatSync(p).size;
+            const size = lstatSync(p).size;
+            out.bytes += size;
+            if (size > out.maxFile) out.maxFile = size;
             out.files++;
             tick();
           } catch {
@@ -181,21 +205,28 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
   };
 
   const escapeEntry = (linkAbs: string, target: string, repo?: string) => {
-    let s: Sized = { bytes: 0, files: 0, capped: false, nested: [], links: [] };
+    let s: Sized = { bytes: 0, files: 0, maxFile: 0, capped: false, nested: [], links: [], carved: [] };
     try {
-      s = statSync(target).isDirectory() ? sizeTree(target, false) : { ...s, bytes: statSync(target).size, files: 1 };
+      const size = statSync(target).size;
+      s = statSync(target).isDirectory() ? sizeTree(target, false) : { ...s, bytes: size, maxFile: size, files: 1 };
     } catch {
       /* unreadable target */
     }
-    push({ path: rel(linkAbs), bytes: s.bytes, files: s.files, capped: s.capped, git: "none", target, repo }, target);
+    push({ path: rel(linkAbs), bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: "none", target, repo }, target);
   };
 
   const sizedEntry = (abs: string, path: string, state: GitState, repo: string | undefined) => {
-    const marker = regenerable(path) ? undefined : dirMarker(abs);
-    const s = sizeTree(abs, !regenerable(path) && !marker);
-    push({ path, bytes: s.bytes, files: s.files, capped: s.capped, git: state, repo, regen: marker }, abs);
+    const named = regenerable(path);
+    const marker = named ? undefined : dirMarker(abs);
+    const forced = permanentOf(path);
+    // A regenerable-looking folder can still hold something you can't rebuild: carve those out as their own places.
+    const looksRegen = !!(named || marker || userRegen.some((m) => m(path)));
+    const carve: Carve | undefined = looksRegen && !forced && permanent.length ? (a, dir) => { const r = rel(a, dir); return permanentOf(r) ? r : undefined; } : undefined;
+    const s = sizeTree(abs, !!forced || (!named && !marker), carve);
+    push({ path, bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: state, repo, regen: marker, permanent: forced }, abs);
     for (const l of s.links) escapeEntry(l.abs, l.target, repo);
     for (const n of s.nested) scanDir(n);
+    for (const c of s.carved) (c.dir ? sizedEntry : fileEntry)(c.abs, c.path, state, repo);
   };
 
   const fileEntry = (abs: string, path: string, state: GitState, repo: string | undefined) => {
@@ -206,7 +237,7 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
         if (t && !inside(t) && writable(t)) return escapeEntry(abs, t, repo);
       }
       tick();
-      push({ path, bytes: ls.size, files: 1, git: state, repo, regen: ls.isFile() ? binaryMarker(abs, ls.size) : undefined }, abs);
+      push({ path, bytes: ls.size, files: 1, maxFile: ls.size, git: state, repo, regen: ls.isFile() ? binaryMarker(abs, ls.size) : undefined, permanent: permanentOf(path) }, abs);
     } catch {
       /* gone */
     }
@@ -304,10 +335,12 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
       if (unpushed > 0) push({ path: repoDir + ".git/", bytes: 0, files: 0, git: "clean", repoIssue: "unpushed", unpushed, repo }, top);
     }
     if (hasHead && !remotes.length) {
-      const gd = git(top, ["rev-parse", "--absolute-git-dir"]).out.trim();
+      // git prints C:/forward/slashes on Windows: resolve to the same native form as the root, so probes can match it.
+      const gdRaw = git(top, ["rev-parse", "--absolute-git-dir"]).out.trim();
+      const gd = gdRaw ? realTarget(resolve(gdRaw)) ?? resolve(gdRaw) : "";
       const commits = Number(git(top, ["rev-list", "--count", "--all"]).out.trim()) || 0;
-      const s = gd ? sizeTree(gd, false) : { bytes: 0, files: 0, capped: false };
-      push({ path: repoDir + ".git/", bytes: s.bytes, files: s.files, capped: s.capped, git: "clean", repoIssue: "no-remote", unpushed: commits, repo }, gd || top);
+      const s = gd ? sizeTree(gd, false) : { bytes: 0, files: 0, maxFile: 0, capped: false };
+      push({ path: repoDir + ".git/", bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: "clean", repoIssue: "no-remote", unpushed: commits, repo }, gd || top);
     }
     repos.push({ path: repo || ".", remote: remotes[0] ?? null, unpushed, branch });
   };
@@ -322,6 +355,7 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
     }
     let looseBytes = 0;
     let looseFiles = 0;
+    let looseMax = 0;
     for (const d of ents) {
       if (d.name === ".git") continue;
       const abs = join(dir, d.name);
@@ -334,7 +368,9 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
         else sizedEntry(abs, rel(abs, true), "none", undefined);
       } else {
         try {
-          looseBytes += lstatSync(abs).size;
+          const size = lstatSync(abs).size;
+          looseBytes += size;
+          if (size > looseMax) looseMax = size;
           looseFiles++;
           tick();
         } catch {
@@ -344,7 +380,7 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
     }
     if (looseFiles) {
       const base = rel(dir, true);
-      push({ path: (base === "./" ? "" : base) + "*", bytes: looseBytes, files: looseFiles, git: "none" }, dir);
+      push({ path: (base === "./" ? "" : base) + "*", bytes: looseBytes, files: looseFiles, maxFile: looseMax, git: "none" }, dir);
     }
   };
 
@@ -370,7 +406,7 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
       if (ignored) {
         // The whole root is gitignored inside a parent repo: nothing here is in history.
         const s = sizeTree(root, true);
-        push({ path: "./", bytes: s.bytes, files: s.files, capped: s.capped, git: "ignored" }, root);
+        push({ path: "./", bytes: s.bytes, files: s.files, maxFile: s.maxFile, capped: s.capped, git: "ignored" }, root);
         for (const l of s.links) escapeEntry(l.abs, l.target);
         for (const n of s.nested) scanDir(n);
       } else scanRepo(t, sub);
@@ -380,11 +416,24 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
 
   const platform = opts.platform ?? process.platform;
   const snap = opts.snapshots ?? probeSnapshots(root, { platform, mode: opts.noProbe ? "off" : undefined });
+  let cloud: ReturnType<typeof probeCloud>;
+  try {
+    cloud = probeCloud(root, { platform, ...opts.cloud, ...(opts.noProbe ? { mode: "off" } : {}) });
+  } catch (e) {
+    // A probe never fails the map.
+    cloud = { probes: [{ name: "cloud sync", status: "unknown", detail: `probe failed: ${(e as Error).message}`, counts: true }], check: () => undefined };
+  }
   for (const e of entries) {
-    const fragile = e.repoIssue === "no-remote" || e.target || (!e.aggregate && !e.repoIssue && e.git !== "dirty" && e.git !== "clean" && !e.regen && !regenerable(e.path));
+    const fragile =
+      e.repoIssue === "no-remote" || e.target || (!e.aggregate && !e.repoIssue && e.git !== "dirty" && e.git !== "clean" && (!!e.permanent || (!e.regen && !regenerable(e.path))));
     if (fragile) {
-      const label = snap.covers(absOf.get(e) ?? root);
+      const abs = absOf.get(e) ?? root;
+      const label = snap.covers(abs);
       if (label) e.snapshot = label;
+      else {
+        const c = cloud.check(abs, { bytes: e.bytes, maxFile: e.maxFile, dir: e.path.endsWith("/") || e.path.endsWith("*"), capped: e.capped });
+        if (c) e.cloud = c;
+      }
     }
   }
   const gv = gitVersion();
@@ -393,6 +442,7 @@ export function collect(rootInput: string, opts: CollectOptions = {}): Inventory
       ? { name: "git", status: "ok", detail: gv, counts: true }
       : { name: "git", status: "absent", detail: "git not found: every path is graded as outside git", counts: true },
     ...snap.probes,
+    ...cloud.probes,
   ];
   return {
     root,

@@ -23,10 +23,10 @@
 <p>Then they're only as safe as your remote. That's why "no remote" is permanent and "unpushed commits" is slow undo. Zone X assumes <code>.git</code> survives, which is the common case for file-level edits and deletes.</p>
 <h2>Time Machine is on. Why is something still in Zone VE?</h2>
 <p>undomap asks <code>tmutil isexcluded</code> for each fragile path. Big folders (datasets, VM images, <code>~/code</code> itself) are often excluded on purpose. They show as VE with no snapshot.</p>
-<h2>Dropbox, iCloud or OneDrive?</h2>
-<p>A sync client copies a delete within seconds. The provider's own version history or recycle bin (often 30 days) is the real undo. v0.1 doesn't detect it yet (planned for v0.2). Until then, list those folders under <code>backedUp</code> if you trust that history.</p>
+<h2>My project is in Dropbox / OneDrive / Google Drive / iCloud. Isn't that a backup?</h2>
+<p>Partly. The client copies the agent's delete to the cloud within seconds, so the undo is the provider's version history (30 days on most plans). undomap detects the folder and counts that history only when it can verify it: the client's own config points there, the client is running, and the path isn't one the provider skips (Dropbox-ignored folders, <code>.nosync</code>, temp files, files over the size limit). iCloud Drive brings back deleted files but not overwritten ones, so it never counts. Everything else stays Zone VE, marked <em>possible cloud versioning, unverified</em>, with the check to run. <a href="reference.html#cloud">The full rules.</a> If you know better, list the folder under <code>backedUp</code>.</p>
 <h2>It says my <code>dist/</code> is regenerable, but it isn't.</h2>
-<p>Built-in names are a guess. Add the folder to <code>backedUp</code> if it's protected some other way. If it really can't be rebuilt, rename it or <a href="https://github.com/Blackman99/undomap/issues">open an issue</a>. A per-path "permanent" override is on the roadmap.</p>
+<p>Built-in names are a guess. List it under <code>permanent</code> in <code>.undomap.json</code> and it's graded Zone VE with a fix, even if it sits inside a regenerable folder (<code>"permanent": [".cache/models/"]</code> carves just that subfolder out). If it's protected some other way, use <code>backedUp</code> instead. See <a href="configuration.html#precedence">precedence</a>.</p>
 <h2>Does it read file contents?</h2>
 <p>Only the first 4 bytes of gitignored or untracked files, to spot compiled binaries. Everything else is <code>lstat</code> and git metadata. Nothing leaves your machine. The landing page draws dropped JSON in the browser tab.</p>
 <h2>How is this different from agentckpt, blast-radius tools or command blockers?</h2>

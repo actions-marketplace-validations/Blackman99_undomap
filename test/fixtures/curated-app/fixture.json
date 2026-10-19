@@ -1,0 +1,16 @@
+{
+  "_why": "Hand-curated data sitting in folders whose names say 'regenerable': a tuned atlas in dist/, model weights in .cache/models/, a CACHEDIR.TAG folder, a vendored patch, a prebuilt tool binary.",
+  "commit": [".gitignore", "package.json", "src/index.js", "src/app.js", "bin/README.md"],
+  "generate": {
+    "dist/atlas/hand-tuned.json": 5000,
+    "dist/atlas/weights.bin": 3000,
+    ".cache/models/llama-q4.gguf": 9000,
+    ".cache/pip/wheel.whl": 3000,
+    "tool-cache/CACHEDIR.TAG": 43,
+    "tool-cache/index.bin": 2000,
+    "vendor/patched/lib.c": 700,
+    "vendor/stock/x.c": 500
+  },
+  "elf": ["bin/tool"],
+  "modify": { "src/app.js": "// edited, not committed\n" }
+}

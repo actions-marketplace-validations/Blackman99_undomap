@@ -18,7 +18,22 @@ export type Kind =
   | "unpushed" // commits that exist only in this .git
   | "snapshot" // would be permanent, but a local snapshot covers it
   | "backed-up" // would be permanent, but config says it is backed up elsewhere
+  | "cloud" // would be permanent, but a running sync client keeps version history for it
   | "tracked"; // clean tracked files: git checkout brings them back
+
+export type CloudProvider = "iCloud Drive" | "Dropbox" | "OneDrive" | "Google Drive";
+
+/** What a cloud-sync folder's own history does for one path. Only "covered" demotes to Zone AE. */
+export interface CloudCoverage {
+  provider: CloudProvider;
+  /** covered: client config + client running + no known exclusion · unverified: can't confirm it syncs ·
+   *  partial: deletes kept, overwrites not versioned (iCloud) · gap: the provider skips this path */
+  status: "covered" | "unverified" | "partial" | "gap";
+  /** Why, in a few words. */
+  note: string;
+  /** The sync folder (absolute). */
+  root: string;
+}
 
 export interface RawEntry {
   /** Path relative to the scan root, POSIX separators; directories end with "/". */
@@ -43,6 +58,12 @@ export interface RawEntry {
   backedUp?: boolean;
   /** Matches a config `regenerable` entry or a built-in pattern (set by grade). */
   regen?: string;
+  /** The `.undomap.json` `permanent` pattern that matches this path (set by collect; grade also checks). */
+  permanent?: string;
+  /** Largest single file inside (set by collect, for cloud per-file size limits). */
+  maxFile?: number;
+  /** Set by collect when the path sits inside a cloud-sync folder. */
+  cloud?: CloudCoverage;
 }
 
 export interface Fix {
@@ -67,6 +88,10 @@ export interface Finding {
   secret: boolean;
   target?: string;
   unpushed?: number;
+  /** The `.undomap.json` `permanent` pattern that matched: it overrides any "regenerable" guess. */
+  forcedBy?: string;
+  /** Present when the path is inside a cloud-sync folder: what its version history does (and doesn't) cover. */
+  cloud?: Omit<CloudCoverage, "root">;
   fix?: Fix;
 }
 

@@ -18,11 +18,20 @@
 <h2>.undomap.json</h2>
 <p>Optional, at the root you map (or pass <code>--config file</code>). It tells undomap what it can't detect.</p>
 <pre><code>{
+  "permanent": ["build/atlas/", ".cache/models/", "vendor/patched/"],
   "regenerable": ["generated/", "*.parquet", "data/cache/**"],
   "backedUp": ["media/", "Rushes/"]
 }</code></pre>
-<ul><li><code>regenerable</code>: paths your scripts rebuild. They're graded Zone AE.</li>
+<ul><li><code>permanent</code>: paths that can't be rebuilt even though they look like they can: a hand-tuned folder under <code>build/</code> or <code>dist/</code>, model weights in <code>.cache/models/</code>, a vendored patch, a prebuilt binary with no source. They're graded Zone VE with the reason "looks regenerable (…) but .undomap.json marks it permanent", and the JSON finding carries <code>"forcedBy": "&lt;pattern&gt;"</code>. A permanent folder inside a regenerable one is carved out as its own place, so <code>.cache/</code> stays Zone AE and <code>.cache/models/</code> shows up in Zone VE with its own bytes.</li>
+<li><code>regenerable</code>: paths your scripts rebuild. They're graded Zone AE.</li>
 <li><code>backedUp</code>: paths you back up some other way (restic, borg, rsync to a NAS, a versioned bucket). They're graded Zone AE with the reason "backed up per .undomap.json".</li></ul>
+<h2 id="precedence">Precedence</h2>
+<p>When rules disagree, the first one that applies wins:</p>
+<ol><li><b>What git knows.</b> Clean tracked files are Zone X and uncommitted edits or unpushed commits are Zone AE, whatever the config says. <code>permanent</code> can't make git forget a commit.</li>
+<li><b>Real coverage.</b> <code>backedUp</code>, a snapshot that covers the path, and <a href="reference.html#cloud">cloud version history undomap could verify</a> move it to Zone AE, even if it's also <code>permanent</code>: a copy really exists somewhere else. The reason says both ("marked permanent, but backed up per .undomap.json").</li>
+<li><b><code>permanent</code></b> beats every "regenerable" guess: built-in folder names (<code>dist</code>, <code>.cache</code>, <code>vendor</code>…), content markers (<code>pyvenv.cfg</code>, <code>CACHEDIR.TAG</code>, ELF/Mach-O/PE headers) and your own <code>regenerable</code> list. If a path is on both of your lists, <code>permanent</code> wins.</li>
+<li><b>Regenerable</b> (built-in or yours): Zone AE.</li>
+<li>Everything else git doesn't hold: Zone VE.</li></ol>
 <p>Pattern rules: <code>dir/</code> matches that directory at any depth, or anchored if it contains another slash (<code>a/dir/</code>). <code>*.ext</code> matches a basename. <code>a/**/b</code> matches across directories. Unknown keys are an error, so a typo can't silently grade your data as safe.</p>
 <h2>Flags</h2>
 <table><tr><th>Flag</th><th>Default</th><th></th></tr>
@@ -31,7 +40,7 @@
 <tr><td><code>--all</code></td><td>top 12</td><td>list every Zone VE place</td></tr>
 <tr><td><code>--max-permanent &lt;size&gt;</code></td><td><code>0</code></td><td>permanent bytes allowed before exit 1: <code>512KB</code>, <code>10MB</code>, <code>1.5GB</code></td></tr>
 <tr><td><code>--config &lt;file&gt;</code></td><td><code>&lt;path&gt;/.undomap.json</code></td><td>config file</td></tr>
-<tr><td><code>--no-probe</code></td><td>probe</td><td>skip snapshot probes</td></tr>
+<tr><td><code>--no-probe</code></td><td>probe</td><td>skip snapshot and cloud-sync probes (<code>UNDOMAP_CLOUD=off</code> skips only the cloud one)</td></tr>
 <tr><td><code>--no-color</code></td><td>auto</td><td>also <code>NO_COLOR=1</code>. <code>FORCE_COLOR=1</code> forces color in pipes</td></tr></table>
 <h2>Exit codes</h2>
 <table><tr><td><code>0</code></td><td>nothing in Zone VE (or under <code>--max-permanent</code>)</td></tr><tr><td><code>1</code></td><td>something in Zone VE</td></tr><tr><td><code>2</code></td><td>usage error, unreadable root, invalid config</td></tr></table>

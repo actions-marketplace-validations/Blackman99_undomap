@@ -28,6 +28,7 @@ undomap --version</code></pre>
 <tr><td>macOS</td><td><code>tmutil destinationinfo</code>, <code>listlocalsnapshots</code>, and <code>isexcluded</code> for each fragile path</td></tr>
 <tr><td>Linux</td><td><code>findmnt</code> for the mount, then snapper (<code>.snapshots</code>), ZFS (<code>.zfs/snapshot</code>) and Timeshift</td></tr>
 <tr><td>Windows</td><td>Shadow copies are reported as unknown, because <code>vssadmin</code> needs an admin shell</td></tr></table>
+<p>Every platform also gets the read-only <a href="reference.html#cloud">cloud-sync probe</a> (iCloud Drive, Dropbox, OneDrive, Google Drive). It reads client config files, lists running apps (<code>ps</code> / <code>tasklist</code>) and reads the Dropbox ignore attribute (<code>xattr</code>, <code>getfattr</code> from the <code>attr</code> package on Linux, an NTFS stream on Windows).</p>
 <p class="next">Next sheet: <a href="usage.html">Usage</a></p></main></div>
 <footer class="foot">undomap 0.1.0 · MIT · <a href="https://github.com/Blackman99/undomap/issues">issues</a></footer>
 </body></html>

@@ -24,13 +24,14 @@ Options
       --all                      list every Zone VE place (default: top 12; secrets always shown)
       --max-permanent <size>     permanent bytes allowed before exit 1 (default 0), e.g. 1MB
       --config <file>            config file (default: <path>/.undomap.json)
-      --no-probe                 skip snapshot probes (Time Machine, btrfs/ZFS, Timeshift)
+      --no-probe                 skip snapshot and cloud-sync probes (Time Machine, btrfs/ZFS, Timeshift, Dropbox…)
       --no-color                 plain output (also NO_COLOR=1)
   -h, --help / -v, --version
 
 Zones (FEMA flood-map letters)
   VE  permanent   gitignored or untracked and not regenerable, outside git, symlinks out, repo with no remote
-  AE  slow undo   regenerable (node_modules, dist, .venv…), uncommitted edits, unpushed commits, in a local snapshot
+  AE  slow undo   regenerable (node_modules, dist, .venv…), uncommitted edits, unpushed commits, in a snapshot,
+                  in a cloud folder whose version history undomap could verify
   X   undoable    clean tracked files: git checkout brings them back
 
 Exit codes: 0 nothing permanent · 1 something in Zone VE · 2 usage or hard error

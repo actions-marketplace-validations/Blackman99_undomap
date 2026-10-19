@@ -19,6 +19,26 @@ export interface FixContext {
 }
 
 export function fixFor(f: Finding, ctx: FixContext): Fix | undefined {
+  const fix = baseFix(f, ctx);
+  return fix && f.zone === "VE" && f.cloud ? { ...fix, say: cloudSay(f.cloud, fix.say) } : fix;
+}
+
+/** A Zone VE place in a sync folder: the real fix first, then what the provider does and doesn't do. Same command. */
+function cloudSay(c: NonNullable<Finding["cloud"]>, say: string): string {
+  if (c.status === "unverified") return `${say} · possible ${c.provider} versioning, unverified`;
+  if (c.status === "partial") return `${say} · ${c.provider} only brings back deletes, not overwrites`;
+  return `${say} · ${c.provider} skips it: ${c.note}`;
+}
+
+/** One line per unverified sync folder: the cheapest way to find out whether its history counts. */
+export function cloudCheck(c: NonNullable<Finding["cloud"]>): string {
+  if (/not running/.test(c.note)) return `start ${c.provider}, let it finish syncing, then rerun undomap`;
+  if (/stale copy/.test(c.note)) return `if ${c.provider} really syncs this folder, start its app and rerun undomap; if not, nothing versions it`;
+  if (/install attr/.test(c.note)) return "install attr (getfattr), then rerun undomap";
+  return `check the ${c.provider} app shows these synced, then rerun undomap`;
+}
+
+function baseFix(f: Finding, ctx: FixContext): Fix | undefined {
   const p = noSlash(f.path);
   const name = `${slug(ctx.rootName)}-${slug(f.path)}`;
   switch (f.kind) {
@@ -28,7 +48,7 @@ export function fixFor(f: Finding, ctx: FixContext): Fix | undefined {
       if (f.secret)
         return {
           say: "keep a copy outside the tree (password manager or ~/.config)",
-          run: `mkdir -p -m 700 ~/.undomap-safe && cp -Rp ${q(p)} ~/.undomap-safe/${q(name)}`,
+          run: `mkdir -p -m 700 ${SAFE} && cp -Rp ${q(p)} ${SAFE}/${q(name)}`,
           cost: "seconds",
         };
       const binary = f.bytes > MEDIA_SMALL && (BINARY.test(p) || (f.path.endsWith("/") && f.bytes / Math.max(1, f.files) > 1024 * 1024));
@@ -45,10 +65,10 @@ export function fixFor(f: Finding, ctx: FixContext): Fix | undefined {
       if (f.kind === "no-git")
         return f.path.endsWith("/")
           ? { say: "give it local history in one command", run: `git -C ${q(p)} init -q && git -C ${q(p)} add -A && git -C ${q(p)} commit -qm "undomap: baseline"`, cost: "seconds" }
-          : { say: "copy it outside the agent's workspace", run: `mkdir -p ~/.undomap-safe && cp -p ${q(p)} ~/.undomap-safe/`, cost: "seconds" };
+          : { say: "copy it outside the agent's workspace", run: `mkdir -p -m 700 ${SAFE} && cp -p ${q(p)} ${SAFE}/`, cost: "seconds" };
       return {
         say: "ignored on purpose, so don't commit it: keep a copy outside the tree",
-        run: `mkdir -p ~/.undomap-safe && tar -czf ~/.undomap-safe/${q(name)}.tgz ${q(p)}`,
+        run: `mkdir -p -m 700 ${SAFE} && tar -czf ${SAFE}/${q(name + ".tgz")} ${q(p)}`,
         cost: "seconds",
       };
     }

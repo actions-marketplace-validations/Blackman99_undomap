@@ -13,7 +13,7 @@ Developers and small teams who give Claude Code, Codex, Cursor, Cline, OpenCode 
   - **Zone AE (slow undo)**: regenerable (`node_modules/`, build output, venvs, compiled binaries), uncommitted edits to tracked files, unpushed commits, anything a detected snapshot covers.
   - **Zone X (undoable)**: clean tracked files: `git checkout` brings them back.
 - Ranking Zone VE by bytes, with one concrete, cheapest fix per place (a command where there is one).
-- Best-effort snapshot probes (Time Machine, btrfs/snapper, ZFS, Timeshift). A probe that can't run never fails the map.
+- Best-effort snapshot probes (Time Machine, btrfs/snapper, ZFS, Timeshift) and cloud-sync probes (iCloud Drive, Dropbox, OneDrive, Google Drive version history). A probe that can't run never fails the map.
 - Output for people (terminal), scripts (`--json`, exit codes), CI (GitHub Action, Markdown job summary) and agents (read-only MCP server).
 
 ## Out of scope

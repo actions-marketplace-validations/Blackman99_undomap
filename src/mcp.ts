@@ -12,7 +12,7 @@ export const TOOLS = [
   {
     name: "map_report",
     description:
-      "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. Read-only: never writes, deletes or runs fixes.",
+      "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot or by cloud-sync version history undomap could verify), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. Read-only: never writes, deletes or runs fixes.",
     inputSchema: { type: "object", properties: { path: PATH_PROP }, required: [] },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
@@ -46,7 +46,7 @@ export function callTool(name: string, args: Json, cwd = process.cwd()): { text:
         {
           root: r.root,
           summary: ve.length ? `${fmtBytes(r.totals.VE.bytes)} across ${r.totals.VE.places} place(s) an agent can erase forever` : "nothing an agent can erase for good",
-          permanent: ve.slice(0, limit).map((f) => ({ path: f.path, bytes: f.bytes, size: fmtBytes(f.bytes), kind: f.kind, why: f.why, secret: f.secret, fix: f.fix?.say, run: f.fix?.run })),
+          permanent: ve.slice(0, limit).map((f) => ({ path: f.path, bytes: f.bytes, size: fmtBytes(f.bytes), kind: f.kind, why: f.why, secret: f.secret, forcedBy: f.forcedBy, cloud: f.cloud, fix: f.fix?.say, run: f.fix?.run })),
           more: Math.max(0, ve.length - limit),
         },
         null,

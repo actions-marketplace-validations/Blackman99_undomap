@@ -24,7 +24,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/grade.test.ts test/map.test.ts test/cli.test.ts test/mcp.test.ts",
+    "test": "node --import tsx --test test/grade.test.ts test/map.test.ts test/permanent.test.ts test/cloud.test.ts test/cli.test.ts test/mcp.test.ts",
     "docs": "node scripts/build_docs.mjs"
   },
   "keywords": [

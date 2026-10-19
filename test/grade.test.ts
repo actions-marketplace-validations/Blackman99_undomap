@@ -110,3 +110,13 @@ test("fixes: a small untracked video is copied out, not committed", () => {
   const small = fixFor({ ...f, path: "notes/", bytes: 3_000, files: 3 }, { platform: "linux", rootName: "p", snapshots: false })!;
   assert.match(small.run!, /^git add -- notes/);
 });
+
+test("fixes: every copy into ~/.undomap-safe creates it private (mkdir -m 700); odd names are quoted", () => {
+  const ctx = { platform: "linux", rootName: "my app", snapshots: false };
+  const f = (path: string, kind: string, bytes = 300) => fixFor({ zone: "VE", kind, path, bytes, files: 1, capped: false, why: "", secret: false } as any, ctx)!;
+  for (const fx of [f("build.log", "ignored"), f("notes.txt", "no-git"), f("big data/", "ignored", 3e9), f(".env", "ignored")]) {
+    assert.match(fx.run!, /^mkdir -p -m 700 ~\/\.undomap-safe && /, fx.run);
+  }
+  assert.equal(f("build.log", "ignored").run, "mkdir -p -m 700 ~/.undomap-safe && tar -czf ~/.undomap-safe/my-app-build.log.tgz build.log");
+  assert.match(f("big data/", "ignored", 3e9).run!, /rsync -a 'big data'\/ ~\/\.undomap-safe\/my-app-big-data\/$/);
+});

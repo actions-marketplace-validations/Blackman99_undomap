@@ -10,7 +10,7 @@ const run = (args: string[], env: Record<string, string> = {}) => {
   const r = spawnSync(process.execPath, ["--import", "tsx", join(ROOT, "src", "cli.ts"), ...args], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, NO_COLOR: "1", UNDOMAP_SNAPSHOTS: "off", ...env },
+    env: { ...process.env, NO_COLOR: "1", UNDOMAP_SNAPSHOTS: "off", UNDOMAP_CLOUD: "off", ...env },
   });
   return { code: r.status, out: r.stdout, err: r.stderr };
 };

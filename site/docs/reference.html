@@ -1,15 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reference · undomap docs</title>
-<meta name="description" content="Zones, finding kinds, probes, JSON schema, MCP tools.">
+<meta name="description" content="Zones, finding kinds, cloud-sync rules, JSON schema, MCP tools.">
 <link rel="canonical" href="https://blackman99.github.io/undomap/docs/reference.html">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#cfdce3">
 <meta property="og:type" content="article"><meta property="og:site_name" content="undomap">
-<meta property="og:url" content="https://blackman99.github.io/undomap/docs/reference.html"><meta property="og:title" content="undomap docs · Reference"><meta property="og:description" content="Zones, finding kinds, probes, JSON schema, MCP tools.">
+<meta property="og:url" content="https://blackman99.github.io/undomap/docs/reference.html"><meta property="og:title" content="undomap docs · Reference"><meta property="og:description" content="Zones, finding kinds, cloud-sync rules, JSON schema, MCP tools.">
 <meta property="og:image" content="https://blackman99.github.io/undomap/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="undomap flood-zone survey map">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="undomap docs · Reference"><meta name="twitter:description" content="Zones, finding kinds, probes, JSON schema, MCP tools."><meta name="twitter:image" content="https://blackman99.github.io/undomap/og.png">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="undomap docs · Reference"><meta name="twitter:description" content="Zones, finding kinds, cloud-sync rules, JSON schema, MCP tools."><meta name="twitter:image" content="https://blackman99.github.io/undomap/og.png">
 <link rel="stylesheet" href="docs.css"></head>
 <body>
 <header class="strip"><a class="mark" href="../"><img src="../favicon.svg" width="20" height="20" alt=""><span>undomap</span></a><p>DOCS · SHEET 05 OF 06</p><nav><a href="../">Map</a><a href="https://github.com/Blackman99/undomap">GitHub</a></nav></header>
@@ -17,7 +17,7 @@
 <main><h1>Reference</h1>
 <h2>Finding kinds</h2>
 <table><tr><th>kind</th><th>zone</th><th>when</th></tr>
-<tr><td><code>ignored</code></td><td>VE</td><td>gitignored, not regenerable</td></tr>
+<tr><td><code>ignored</code></td><td>VE</td><td>gitignored, not regenerable (or regenerable-looking but listed under <code>permanent</code>)</td></tr>
 <tr><td><code>untracked</code></td><td>VE</td><td>untracked, not regenerable</td></tr>
 <tr><td><code>no-git</code></td><td>VE</td><td>outside every git work tree (<code>dir/</code>, or <code>*</code> for loose files)</td></tr>
 <tr><td><code>symlink-escape</code></td><td>VE</td><td>a link inside the map whose target is outside it and writable by you; bytes are the target's</td></tr>
@@ -27,7 +27,22 @@
 <tr><td><code>unpushed</code></td><td>AE</td><td>commits on local branches not on any remote</td></tr>
 <tr><td><code>snapshot</code></td><td>AE</td><td>would be VE, but a snapshot probe covers it</td></tr>
 <tr><td><code>backed-up</code></td><td>AE</td><td>would be VE, but <code>.undomap.json</code> says it's backed up</td></tr>
+<tr><td><code>cloud</code></td><td>AE</td><td>would be VE, but it's in a sync folder whose version history undomap could verify (see <a href="#cloud">cloud sync</a>)</td></tr>
 <tr><td><code>tracked</code></td><td>X</td><td>clean tracked files, one aggregate per repo</td></tr></table>
+<h2 id="cloud">Cloud sync</h2>
+<p>A sync client copies a delete to the cloud within seconds, so the real undo is the provider's version history and deleted-files bin. undomap only counts it when it can show the history covers the path. The probe is read-only and can't fail the map.</p>
+<table><tr><th>Provider</th><th>Detected from</th><th>History</th><th>Known gaps (stay Zone VE)</th></tr>
+<tr><td>Dropbox</td><td><code>~/.dropbox/info.json</code> (or <code>%APPDATA%</code>/<code>%LOCALAPPDATA%\Dropbox\info.json</code>) paths; weaker: a <code>.dropbox</code> marker above the map, <code>~/Dropbox*</code></td><td>versions and deleted files, 30+ days by plan</td><td><code>com.dropbox.ignored</code> / <code>com.apple.fileprovider.ignore#P</code> on the path or a folder above it; <code>rules.dropboxignore</code>; <code>desktop.ini</code>, <code>.DS_Store</code>, <code>~$…</code>, <code>.~…</code>, <code>~…tmp</code></td></tr>
+<tr><td>OneDrive</td><td><code>%OneDrive%</code>, <code>%OneDriveConsumer%</code>, <code>%OneDriveCommercial%</code>, <code>~/Library/CloudStorage/OneDrive-*</code>; weaker: <code>~/OneDrive*</code></td><td>version history and recycle bin, 30 days (93 for work)</td><td>files over 250 GB; <code>.tmp</code>, <code>desktop.ini</code>, <code>.DS_Store</code>, <code>~$…</code>, <code>.lock</code>, <code>CON</code>/<code>NUL</code>/…, <code>_vti_</code>, <code>" * : &lt; &gt; ? |</code></td></tr>
+<tr><td>Google Drive</td><td><code>~/Library/CloudStorage/GoogleDrive-*</code>, <code>G:\My Drive</code>-style virtual drives; weaker: legacy <code>~/Google Drive</code></td><td>file versions for 30 days or 100 versions, trash for 30 days</td><td>files over 5 TB; <code>.tmp</code>, <code>desktop.ini</code>, <code>.DS_Store</code>, <code>~$…</code></td></tr>
+<tr><td>iCloud Drive</td><td><code>~/Library/Mobile Documents</code> (macOS), <code>~/iCloudDrive</code> (Windows)</td><td>Recently Deleted keeps deleted files 30 days; <b>no older versions</b> of overwritten files</td><td>always: an overwrite is permanent. Also <code>*.nosync</code>, <code>*.tmp</code>, files over 50 GB</td></tr></table>
+<p><b>The demotion rule.</b> A path moves to Zone AE (<code>kind: "cloud"</code>) only when all of these hold:</p>
+<ol><li>the client's own config (Dropbox <code>info.json</code>, the OneDrive environment variables, the <code>~/Library/CloudStorage</code> folder the client creates) points at a folder containing it;</li>
+<li>the client is running right now (<code>ps</code> / <code>tasklist</code>), so the folder isn't a stale copy;</li>
+<li>no known gap applies to the path or any folder above it, and its largest file is under the provider's per-file limit;</li>
+<li>for Dropbox, the ignore attribute could be read and isn't set, and <code>rules.dropboxignore</code> doesn't match.</li></ol>
+<p>iCloud Drive never demotes: it keeps deletes but not overwrites, and an agent overwriting a file is as final as deleting it. Anything undomap can't confirm (client not running, a folder name or <code>.dropbox</code> marker with no client config, attributes it can't read) stays in Zone VE with <em>possible cloud versioning, unverified</em> in the reason, the probe line, and one <code>cloud sync</code> line under the report with the cheapest way to check. A snapshot or <code>backedUp</code> still wins over all of this.</p>
+<p><b>What it can't see.</b> A paused sync, a full quota, or a subfolder <em>inside</em> a place that's marked ignored (undomap checks the place itself and the folders above it). If the client shows errors, treat cloud Zone AE as Zone VE. iCloud's Desktop &amp; Documents sync isn't detected, which only errs towards Zone VE.</p>
 <h2>JSON</h2>
 <pre><code>{
   "tool": "undomap", "version": "0.1.0", "root": "/home/me/app", "scannedAt": "…", "durationMs": 41,
@@ -36,15 +51,17 @@
   "totals": { "VE": { "bytes": 1300000000, "places": 4, "files": 3155 }, "AE": {…}, "X": {…} },
   "findings": [{ "zone": "VE", "kind": "ignored", "path": "textures_sorted/", "bytes": 1300000000,
                  "files": 3112, "capped": false, "why": "gitignored", "secret": false,
+                 "forcedBy": "textures_sorted/",   // only when a .undomap.json "permanent" pattern matched
+                 "cloud": { "provider": "Dropbox", "status": "unverified", "note": "Dropbox app not running" },
                  "fix": { "say": "…", "run": "…", "cost": "minutes" } }, …],
   "skipped": [{ "path": "private/", "reason": "EACCES" }],
   "exitCode": 1, "thresholdBytes": 0
 }</code></pre>
-<p>Paths are relative to <code>root</code>, use POSIX separators, and directories end in <code>/</code>. <code>capped: true</code> means sizing stopped at 250,000 entries for that place, so bytes is a lower bound (shown with a <code>+</code>). Remote URLs are never printed, only remote names, because URLs can carry tokens.</p>
+<p><code>cloud</code> is present for a path inside a sync folder: <code>status</code> is <code>covered</code> (graded AE), <code>unverified</code>, <code>partial</code> (iCloud: deletes only) or <code>gap</code> (the provider skips it); <code>note</code> says why. <code>forcedBy</code> is present when a <code>permanent</code> pattern from <code>.undomap.json</code> matched the path (see <a href="configuration.html#precedence">precedence</a>); <code>why</code> then says the config forced it. Paths are relative to <code>root</code>, use POSIX separators, and directories end in <code>/</code>. <code>capped: true</code> means sizing stopped at 250,000 entries for that place, so bytes is a lower bound (shown with a <code>+</code>). Remote URLs are never printed, only remote names, because URLs can carry tokens.</p>
 <h2>MCP tools</h2>
 <table><tr><th>tool</th><th>args</th><th>returns</th></tr>
 <tr><td><code>map_report</code></td><td><code>path?</code></td><td>Markdown report + compact JSON</td></tr>
-<tr><td><code>list_permanent</code></td><td><code>path?</code>, <code>limit?</code> (25)</td><td>JSON: summary, permanent[] with path, bytes, why, fix, run; more</td></tr></table>
+<tr><td><code>list_permanent</code></td><td><code>path?</code>, <code>limit?</code> (25)</td><td>JSON: summary, permanent[] with path, bytes, why, forcedBy, cloud, fix, run; more</td></tr></table>
 <p>Both are annotated <code>readOnlyHint: true</code>, <code>destructiveHint: false</code>.</p>
 <p class="next">Next sheet: <a href="faq.html">FAQ</a></p></main></div>
 <footer class="foot">undomap 0.1.0 · MIT · <a href="https://github.com/Blackman99/undomap/issues">issues</a></footer>

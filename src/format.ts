@@ -1,6 +1,7 @@
 // Human report (ANSI), Markdown (job summary / MCP) and JSON.
 import { fmtBytes, plural } from "./bytes.js";
-import { snapshotFix } from "./fix.js";
+import { cloudCheck, snapshotFix } from "./fix.js";
+import { machineSnapshots } from "./grade.js";
 import type { Finding, Report, Zone } from "./types.js";
 
 export interface TextOptions {
@@ -134,7 +135,7 @@ export function formatText(r: Report, o: TextOptions): string {
   if (r.skipped.length) out.push(`  ${k.dim("skipped")} ${r.skipped.length} unreadable: ${r.skipped.slice(0, 3).map((s) => `${s.path} (${s.reason})`).join(", ")}${r.skipped.length > 3 ? ", …" : ""}`);
 
   // Fix footer: the biggest permanent place, then the machine-level fix, then the hints.
-  const snapOk = r.probes.some((p) => p.counts && p.name !== "git" && p.status === "ok");
+  const snapOk = machineSnapshots(r.probes);
   if (ve.length && !o.fix) {
     const top = ve[0];
     out.push("");
@@ -146,6 +147,17 @@ export function formatText(r: Report, o: TextOptions): string {
     out.push("");
     out.push(`  ${k.copper("whole map")}  ${s.say}`);
     if (o.fix && s.run) out.push(`    ${k.dim("$")} ${s.run}`);
+  }
+  const unverified = new Map<string, { c: NonNullable<Finding["cloud"]>; n: number }>();
+  for (const f of ve)
+    if (f.cloud?.status === "unverified") {
+      const key = f.cloud.provider + "\0" + f.cloud.note;
+      unverified.set(key, { c: f.cloud, n: (unverified.get(key)?.n ?? 0) + 1 });
+    }
+  for (const { c, n } of unverified.values()) {
+    out.push("");
+    out.push(`  ${k.copper("cloud sync")}  ${c.provider} may keep versions of ${n === ve.length ? (n === 1 ? "the place" : n === 2 ? "both places" : `all ${n} places`) : plural(n, "place")} above, but undomap can't confirm it (${c.note})`);
+    out.push(`    ${k.dim("→")} ${cloudCheck(c)}`);
   }
   if (ve.length && !o.fix) {
     out.push("");

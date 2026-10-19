@@ -16,11 +16,11 @@ export function loadConfig(root: string, explicit?: string): { config: Config; f
   } catch (e) {
     throw new UsageError(`${file}: not valid JSON (${(e as Error).message})`);
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new UsageError(`${file}: expected an object like {"regenerable": [], "backedUp": []}`);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new UsageError(`${file}: expected an object like {"permanent": [], "regenerable": [], "backedUp": []}`);
   const out: Config = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (k === "$schema") continue;
-    if (k !== "regenerable" && k !== "backedUp") throw new UsageError(`${file}: unknown key "${k}" (known: regenerable, backedUp)`);
+    if (k !== "regenerable" && k !== "backedUp" && k !== "permanent") throw new UsageError(`${file}: unknown key "${k}" (known: permanent, regenerable, backedUp)`);
     if (!Array.isArray(v) || !v.every((s) => typeof s === "string")) throw new UsageError(`${file}: "${k}" must be an array of path patterns`);
     out[k] = v as string[];
   }

@@ -30,7 +30,8 @@ undomap . --all            # every Zone VE place, not just the top 12</code></pr
 <tr><td>over 25 MB, or a binary/media file over 2 MB</td><td><code>rsync</code> to somewhere the agent can't write, plus snapshots</td></tr>
 <tr><td>folder outside git</td><td><code>git init && git add -A && git commit</code></td></tr>
 <tr><td>repo with no remote</td><td><code>git bundle create ~/repo.bundle --all</code></td></tr>
-<tr><td>symlink out of the tree</td><td>map the target too, or replace the link with a copy</td></tr></table>
+<tr><td>symlink out of the tree</td><td>map the target too, or replace the link with a copy</td></tr>
+<tr><td>inside a sync folder undomap can't verify</td><td>the same fix, tagged "possible Dropbox versioning, unverified", plus one line per folder with the cheapest check (start the app, install <code>attr</code>, …)</td></tr></table>
 <p>When no snapshot probe covers the map, one machine-level fix is added at the end: Time Machine, snapper or ZFS, or File History.</p>
 <h2 id="json">JSON and Markdown</h2>
 <pre><code>undomap --json > undomap.json      # also drop it on the landing page to draw your own map
