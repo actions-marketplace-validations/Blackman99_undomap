@@ -12,8 +12,15 @@ export const TOOLS = [
   {
     name: "map_report",
     description:
-      "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot or by cloud-sync version history undomap could verify), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. Read-only: never writes, deletes or runs fixes.",
-    inputSchema: { type: "object", properties: { path: PATH_PROP }, required: [] },
+      "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot or by cloud-sync version history undomap could verify), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. With reach=true it also reports credential reach (the lethal trifecta): whether this process can read live credentials (.env files, cloud and ssh keys, token env var names; presence only, values are never read), reach the network and write outside the tree at once. Read-only: never writes, deletes or runs fixes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: PATH_PROP,
+        reach: { type: "boolean", description: "also report credential reach (lethal trifecta) for the environment this server runs in. Default false." },
+      },
+      required: [],
+    },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
@@ -34,8 +41,8 @@ type Json = Record<string, any>;
 export function callTool(name: string, args: Json, cwd = process.cwd()): { text: string; isError?: boolean } {
   const path = resolve(cwd, typeof args.path === "string" && args.path ? args.path : ".");
   if (name === "map_report") {
-    const r = mapPath(path);
-    return { text: formatMarkdown(r) + "\n\n```json\n" + JSON.stringify({ root: r.root, totals: r.totals, findings: r.findings.slice(0, 60), probes: r.probes, repos: r.repos }, null, 2) + "\n```" };
+    const r = mapPath(path, { reach: args.reach === true });
+    return { text: formatMarkdown(r) + "\n\n```json\n" + JSON.stringify({ root: r.root, totals: r.totals, findings: r.findings.slice(0, 60), probes: r.probes, repos: r.repos, reach: r.reach }, null, 2) + "\n```" };
   }
   if (name === "list_permanent") {
     const limit = Math.max(1, Math.min(500, Number(args.limit ?? 25) || 25));

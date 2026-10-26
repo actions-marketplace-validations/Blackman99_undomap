@@ -2,6 +2,11 @@
 // that directory; the page grades them with the same grade() the CLI uses. Sizes are realistic, not real.
 const GB = 1024 ** 3, MB = 1024 ** 2, KB = 1024;
 const git = { name: "git", status: "ok", detail: "2.47.3", counts: true };
+// Cloud coverage as collect() reports it (see src/cloud.ts): only "covered" moves a place to Zone AE.
+const DBX = "~/Library/CloudStorage/Dropbox";
+const HIST = "version history and deleted files, 30+ days by plan";
+const covered = { provider: "Dropbox", status: "covered", note: HIST, root: "/Users/mei/Library/CloudStorage/Dropbox" };
+const gap = (note) => ({ provider: "Dropbox", status: "gap", note, root: "/Users/mei/Library/CloudStorage/Dropbox" });
 
 export const SAMPLES = [
   {
@@ -91,6 +96,41 @@ export const SAMPLES = [
         { path: "llm-evals/", bytes: 6.2 * MB, files: 310, git: "clean", aggregate: true, repo: "llm-evals" },
         { path: "side-project/", bytes: 2.2 * MB, files: 188, git: "clean", aggregate: true, repo: "side-project" },
         { path: "infra/", bytes: 0.9 * MB, files: 96, git: "clean", aggregate: true, repo: "infra" },
+      ],
+    },
+  },
+  {
+    id: "dropbox",
+    label: "thesis in Dropbox",
+    story: "Dropbox is running, so most of this thesis has 30 days of version history and sits in Zone AE. Not the raw data and the model cache someone marked “Do not sync”, and not the link into an old OneDrive folder that nothing syncs any more.",
+    source: { text: "Dropbox Help: ignored files", href: "https://help.dropbox.com/sync/ignored-files" },
+    seed: 58,
+    config: { permanent: [".cache/models/"] },
+    inv: {
+      root: "/Users/mei/Library/CloudStorage/Dropbox/ml-thesis", rootName: "ml-thesis", platform: "darwin",
+      scannedAt: "2026-10-19T02:00:00.000Z", durationMs: 1800,
+      repos: [{ path: ".", remote: "origin", unpushed: 3, branch: "main" }],
+      probes: [
+        git,
+        { name: "time machine", status: "absent", detail: "no Time Machine destination, no local snapshots", counts: true },
+        { name: "trash", status: "ok", detail: "present; rm, rimraf and fs.rm skip it", counts: false },
+        { name: "cloud sync", status: "ok", detail: `Dropbox ${DBX} · client running · ${HIST}`, counts: true },
+        { name: "cloud sync", status: "unknown", detail: "OneDrive ~/OneDrive - Uni · possible cloud versioning, unverified (folder name but no client config, may be a stale copy)", counts: true },
+      ],
+      skipped: [],
+      entries: [
+        { path: "data/raw/", bytes: 41.3 * GB, files: 1880, maxFile: 2.1 * GB, git: "ignored", cloud: gap("ignore attribute set") },
+        { path: ".cache/models/", bytes: 7.6 * GB, files: 6, maxFile: 4.1 * GB, git: "ignored", permanent: ".cache/models/", cloud: gap("ignore attribute set") },
+        { path: "shared-data", bytes: 3.1 * GB, files: 240, git: "none", target: "/Users/mei/OneDrive - Uni/lab-share", cloud: { provider: "OneDrive", status: "unverified", note: "folder name but no client config, may be a stale copy", root: "/Users/mei/OneDrive - Uni" } },
+        { path: "runs/", bytes: 6.4 * GB, files: 312, maxFile: 380 * MB, git: "untracked", cloud: covered },
+        { path: ".cache/", bytes: 2.2 * GB, files: 9400, git: "ignored" },
+        { path: ".venv/", bytes: 1.4 * GB, files: 31000, git: "ignored", regen: "Python venv: uv sync / pip install" },
+        { path: "figures/", bytes: 220 * MB, files: 96, maxFile: 9 * MB, git: "untracked", cloud: covered },
+        { path: "notes.md", bytes: 31 * KB, files: 1, git: "untracked", cloud: covered },
+        { path: ".env", bytes: 380, files: 1, git: "ignored", cloud: covered },
+        { path: "paper/thesis.tex", bytes: 88 * KB, files: 1, git: "dirty" },
+        { path: "./.git/", bytes: 0, files: 0, git: "clean", repoIssue: "unpushed", unpushed: 3 },
+        { path: "./", bytes: 14 * MB, files: 420, git: "clean", aggregate: true },
       ],
     },
   },

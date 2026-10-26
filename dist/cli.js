@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { existsSync as existsSync5, realpathSync as realpathSync5 } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync as existsSync5, realpathSync as realpathSync6 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
 import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -553,7 +553,7 @@ function collect(rootInput, opts = {}) {
     const r = relative(root, abs).split(sep2).join("/");
     return dir ? r ? r + "/" : "./" : r;
   };
-  const inside = (abs) => abs === root || abs.startsWith(root.endsWith(sep2) ? root : root + sep2);
+  const inside2 = (abs) => abs === root || abs.startsWith(root.endsWith(sep2) ? root : root + sep2);
   const push = (e, abs) => {
     entries.push(e);
     absOf.set(e, abs);
@@ -603,7 +603,7 @@ function collect(rootInput, opts = {}) {
           tick();
           if (followEscapes) {
             const t = realTarget(p);
-            if (t && !inside(t) && writable(t)) out.links.push({ abs: p, target: t });
+            if (t && !inside2(t) && writable(t)) out.links.push({ abs: p, target: t });
           }
         } else {
           try {
@@ -648,7 +648,7 @@ function collect(rootInput, opts = {}) {
       const ls = lstatSync(abs);
       if (ls.isSymbolicLink()) {
         const t = realTarget(abs);
-        if (t && !inside(t) && writable(t)) return escapeEntry(abs, t, repo);
+        if (t && !inside2(t) && writable(t)) return escapeEntry(abs, t, repo);
       }
       tick();
       push({ path, bytes: ls.size, files: 1, maxFile: ls.size, git: state, repo, regen: ls.isFile() ? binaryMarker(abs, ls.size) : void 0, permanent: permanentOf(path) }, abs);
@@ -659,7 +659,7 @@ function collect(rootInput, opts = {}) {
   const scanRepo = (top, pathspec) => {
     if (seen.has(top)) return;
     seen.add(top);
-    const repo = inside(top) ? rel(top) : "";
+    const repo = inside2(top) ? rel(top) : "";
     const spec = ["--", pathspec ? pathspec.split(sep2).join("/") : "."];
     const status = git(top, ["status", "--porcelain=v2", "-z", "--ignored=traditional", "--untracked-files=normal", ...spec]);
     if (!status.ok) {
@@ -720,7 +720,7 @@ function collect(rootInput, opts = {}) {
         const s = lstatSync(abs);
         if (mode === "120000" || s.isSymbolicLink()) {
           const target = realTarget(abs);
-          if (target && !inside(target) && writable(target)) {
+          if (target && !inside2(target) && writable(target)) {
             escapeEntry(abs, target, repo);
             continue;
           }
@@ -766,7 +766,7 @@ function collect(rootInput, opts = {}) {
       const abs = join2(dir, d.name);
       if (d.isSymbolicLink()) {
         const t = realTarget(abs);
-        if (t && !inside(t) && writable(t)) escapeEntry(abs, t);
+        if (t && !inside2(t) && writable(t)) escapeEntry(abs, t);
         else looseFiles++;
       } else if (d.isDirectory()) {
         if (existsSync3(join2(abs, ".git"))) scanDir(abs);
@@ -1135,11 +1135,55 @@ function formatText(r, o) {
     out.push(`  ${k.copper("cloud sync")}  ${c.provider} may keep versions of ${n === ve.length ? n === 1 ? "the place" : n === 2 ? "both places" : `all ${n} places` : plural(n, "place")} above, but undomap can't confirm it (${c.note})`);
     out.push(`    ${k.dim("\u2192")} ${cloudCheck(c)}`);
   }
+  if (r.reach) out.push("", ...reachText(r.reach, o, k, width));
   if (ve.length && !o.fix) {
     out.push("");
     out.push(k.dim(`  undomap --fix for every place \xB7 --json for scripts \xB7 exit 1 = something in Zone VE`));
   }
   return out.join("\n");
+}
+var REACH_HEAD = ["nothing a bad command could ship out", "1 of 3: a bad command here can erase, not leak", "2 of 3: one more and a deletion can become a leak", "3 of 3: a bad command here can leak your keys as well as erase"];
+function credLabel(c, home) {
+  if (c.where === "env") return `$${c.path}`;
+  return c.where === "home" ? tilde(c.path, home) : c.path;
+}
+function fitList(items, room, more = "more") {
+  let line = "";
+  for (let i = 0; i < items.length; i++) {
+    const rest = items.length - i - 1;
+    const next = (line ? line + " \xB7 " : "") + items[i];
+    const tail = rest ? ` +${rest} ${more}` : "";
+    if (line && (next + tail).length > room) return `${line} +${items.length - i} ${more}`;
+    line = next;
+  }
+  return line;
+}
+function wrap(s, n) {
+  const lines = [];
+  let cur = "";
+  for (const w of s.split(" ")) {
+    if (cur && (cur + " " + w).length > n) {
+      lines.push(cur);
+      cur = w;
+    } else cur = cur ? cur + " " + w : w;
+  }
+  return cur ? [...lines, cur] : lines;
+}
+function reachText(x, o, k, width) {
+  const tone = x.legs === 3 ? k.VE : x.legs === 2 ? k.AE : k.X;
+  const mark = (on) => on === void 0 ? k.dim("?  ") : on ? k.VE("yes") : k.X("no ");
+  const room = width - 22;
+  const net = x.network.status === "unknown" ? void 0 : x.network.status === "open";
+  const creds = x.credentials.map((c) => credLabel(c, o.home));
+  const out = [
+    `${tone("\u25C6")} ${k.bold(tone("REACH"))} ${k.dim("\xB7")} ${tone("LETHAL TRIFECTA")}   ${x.legs === 3 ? k.bold(REACH_HEAD[3]) : REACH_HEAD[x.legs]}`,
+    `  ${"credentials".padEnd(12)} ${mark(creds.length > 0)}  ${creds.length ? fitList(creds, room) + (x.credentialsCapped ? k.dim(" (tree walk capped)") : "") : k.dim("none readable")}`,
+    `  ${"network".padEnd(12)} ${mark(net)}  ${k.dim(x.network.detail)}`,
+    `  ${"write out".padEnd(12)} ${mark(x.writable.length > 0)}  ${x.writable.length ? fitList(x.writable.map((w) => `${tilde(w.path, o.home)} ${k.dim(`(${w.why})`)}`), room + 40) : k.dim("nothing writable outside the tree")}`,
+    ...wrap(x.fix.say, width - 17).map((l, i) => `  ${i ? " ".repeat(12) : k.copper("fix".padEnd(12))} ${l}`)
+  ];
+  if (x.fix.run) out.push(`  ${" ".repeat(13)}${k.dim("$")} ${x.fix.run}`);
+  return out;
 }
 function formatMarkdown(r) {
   const ve = r.findings.filter((f) => f.zone === "VE");
@@ -1168,7 +1212,28 @@ function formatMarkdown(r) {
     lines.push("", "</details>");
   }
   lines.push("", "Probes: " + r.probes.map((p) => `${p.name}: ${p.detail}`).join(" \xB7 "));
+  if (r.reach) lines.push("", ...reachMarkdown(r.reach));
   return lines.join("\n");
+}
+function reachMarkdown(x) {
+  const esc = (s) => s.replace(/\|/g, "\\|");
+  const yn = (on) => on === void 0 ? "?" : on ? "**yes**" : "no";
+  const creds = x.credentials.slice(0, 20).map((c) => c.where === "env" ? `\`$${c.path}\`` : `\`${esc(c.path)}\` ${esc(c.type)}`);
+  if (x.credentials.length > 20) creds.push(`+${x.credentials.length - 20} more`);
+  return [
+    `### Credential reach \u2014 ${x.legs} of 3${x.trifecta ? ": lethal trifecta" : ""}`,
+    "",
+    x.trifecta ? "Live credentials, network and writes outside the tree at once: a bad command here can leak as well as erase." : REACH_HEAD[x.legs].replace(/^\d of 3: /, "") + ".",
+    "",
+    "| Condition | Present | Where |",
+    "|---|---|---|",
+    `| Live credentials (presence only, values never read) | ${yn(x.credentials.length > 0)} | ${creds.join(", ") || "\u2014"}${x.credentialsCapped ? " (tree walk capped)" : ""} |`,
+    `| Network | ${yn(x.network.status === "unknown" ? void 0 : x.network.status === "open")} | ${esc(x.network.detail)} |`,
+    `| Writes outside the tree | ${yn(x.writable.length > 0)} | ${x.writable.map((w) => `\`${esc(w.path)}\` ${esc(w.why)}`).join(", ") || "\u2014"} |`,
+    "",
+    `**Fix:** ${x.fix.say}${x.fix.run ? `  
+\`${x.fix.run}\`` : ""}`
+  ];
 }
 function formatJson(r) {
   return JSON.stringify(r, null, 2);
@@ -1176,11 +1241,11 @@ function formatJson(r) {
 
 // src/mcp.ts
 import { createInterface } from "node:readline";
-import { resolve as resolve3 } from "node:path";
+import { resolve as resolve4 } from "node:path";
 
 // src/run.ts
-import { realpathSync as realpathSync4, statSync as statSync3 } from "node:fs";
-import { resolve as resolve2 } from "node:path";
+import { realpathSync as realpathSync5, statSync as statSync4 } from "node:fs";
+import { resolve as resolve3 } from "node:path";
 
 // src/config.ts
 import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
@@ -1208,20 +1273,213 @@ function loadConfig(root, explicit) {
   return { config: out, file };
 }
 
+// src/reach.ts
+import { accessSync as accessSync2, constants as constants2, readdirSync as readdirSync4, realpathSync as realpathSync4, statSync as statSync3 } from "node:fs";
+import { homedir, networkInterfaces } from "node:os";
+import { dirname as dirname2, isAbsolute, join as join4, relative as relative2, resolve as resolve2, sep as sep3 } from "node:path";
+var HOME_FILES = [
+  [".aws/credentials", "AWS credentials"],
+  [".config/gcloud/application_default_credentials.json", "Google Cloud credentials"],
+  [".config/gcloud/credentials.db", "gcloud login"],
+  [".azure/msal_token_cache.json", "Azure CLI tokens"],
+  [".azure/accessTokens.json", "Azure CLI tokens"],
+  [".kube/config", "Kubernetes config"],
+  [".docker/config.json", "Docker registry auth"],
+  [".config/gh/hosts.yml", "GitHub CLI token"],
+  [".git-credentials", "git credential store"],
+  [".netrc", "netrc passwords"],
+  ["_netrc", "netrc passwords"],
+  [".npmrc", "npm config, may hold a token"],
+  [".pypirc", "PyPI config, may hold a token"],
+  [".cargo/credentials.toml", "crates.io token"],
+  [".terraform.d/credentials.tfrc.json", "Terraform Cloud token"],
+  [".vault-token", "Vault token"],
+  [".pgpass", "Postgres passwords"]
+];
+var ENV_NAME = /(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_?KEY|SECRET_?KEY|PRIVATE_?KEY|CREDENTIALS?)$/i;
+var ENV_EXACT = {
+  AWS_SECRET_ACCESS_KEY: "AWS secret key",
+  AWS_SESSION_TOKEN: "AWS session",
+  GOOGLE_APPLICATION_CREDENTIALS: "path to Google credentials",
+  DATABASE_URL: "database URL, may embed a password",
+  SSH_AUTH_SOCK: "ssh-agent socket"
+};
+var ENV_NOT = /(_FILE|_PATH|_DIR|_URL_TEMPLATE|_HELPER)$|^(GPG_TTY|NPM_CONFIG_USERCONFIG)$/i;
+function credentialType(name, dir) {
+  if (dir) return "credential folder";
+  if (/^\.env/i.test(name)) return "dotenv";
+  if (/^id_/i.test(name)) return "ssh key";
+  if (/\.(pem|key|ppk|age)$/i.test(name)) return "private key";
+  if (/\.(p12|pfx|jks|keystore)$/i.test(name)) return "keystore";
+  if (/\.kdbx$/i.test(name)) return "password vault";
+  if (/\.json$/i.test(name) && /^(credentials|service|client)/i.test(name)) return "cloud credentials";
+  if (/^\.(npmrc|pypirc)$/i.test(name)) return "registry config, may hold a token";
+  if (/^\.(netrc|pgpass|git-credentials)$/i.test(name)) return "password file";
+  return "secrets file";
+}
+var readable = (p) => {
+  try {
+    accessSync2(p, constants2.R_OK);
+    const st = statSync3(p);
+    return st.isFile() || st.isDirectory();
+  } catch {
+    return false;
+  }
+};
+var writable2 = (p) => {
+  try {
+    accessSync2(p, constants2.W_OK);
+    return statSync3(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+var real = (p) => {
+  try {
+    return realpathSync4.native(p);
+  } catch {
+    return resolve2(p);
+  }
+};
+var inside = (child, parent) => {
+  const r = relative2(parent, child);
+  return r === "" || !!r && !r.startsWith("..") && !isAbsolute(r);
+};
+function treeCredentials(root, max) {
+  const found = [];
+  let seen = 0;
+  const walk = (abs, rel, depth) => {
+    let ents;
+    try {
+      ents = readdirSync4(abs, { withFileTypes: true });
+    } catch {
+      return true;
+    }
+    ents.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const e of ents) {
+      if (++seen > max) return false;
+      const r = rel + e.name;
+      if (e.isDirectory()) {
+        if (e.name === ".git" || regenerable(r + "/")) continue;
+        if (isSecret(r + "/")) {
+          found.push({ path: r + "/", type: credentialType(e.name, true), where: "tree" });
+          continue;
+        }
+        if (depth < 6 && !walk(join4(abs, e.name), r + "/", depth + 1)) return false;
+      } else if (e.isFile() && isSecret(r) && !/\.pub$/i.test(e.name)) {
+        found.push({ path: r, type: credentialType(e.name, false), where: "tree" });
+      }
+    }
+    return true;
+  };
+  const done = walk(root, "", 0);
+  return { found, capped: !done };
+}
+function homeCredentials(home, platform, env) {
+  const out = [];
+  const files = [...HOME_FILES];
+  if (platform === "win32" && env.APPDATA) {
+    const app = relative2(home, env.APPDATA).split(sep3).join("/");
+    if (app && !app.startsWith("..")) files.push([`${app}/gcloud/application_default_credentials.json`, "Google Cloud credentials"]);
+  }
+  for (const [rel, type] of files) {
+    const abs = join4(home, ...rel.split("/"));
+    if (readable(abs)) out.push({ path: abs, type, where: "home" });
+  }
+  const ssh = join4(home, ".ssh");
+  try {
+    for (const name of readdirSync4(ssh).sort())
+      if ((/^id_[\w-]+$/.test(name) || /\.(pem|key)$/i.test(name)) && readable(join4(ssh, name))) out.push({ path: join4(ssh, name), type: "ssh key", where: "home" });
+  } catch {
+  }
+  return out;
+}
+function envCredentials(env) {
+  const out = [];
+  for (const name of Object.keys(env).sort()) {
+    if (!env[name] || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || ENV_NOT.test(name)) continue;
+    const exact = ENV_EXACT[name.toUpperCase()];
+    if (exact || ENV_NAME.test(name)) out.push({ path: name, type: exact ?? "token-like name", where: "env" });
+  }
+  return out;
+}
+function network(env, ifs) {
+  if (env.CODEX_SANDBOX_NETWORK_DISABLED === "1") return { status: "closed", detail: "Codex sandbox, network disabled" };
+  let list;
+  try {
+    list = ifs ?? networkInterfaces();
+  } catch {
+    return { status: "unknown", detail: "can't list network interfaces" };
+  }
+  const up = Object.entries(list).filter(([, a]) => (a ?? []).some((x) => !x.internal && x.address));
+  const proxy = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"].some((k) => env[k]);
+  if (!up.length) return proxy ? { status: "unknown", detail: "loopback only, egress through a proxy whose allowlist undomap can't see" } : { status: "closed", detail: "loopback only" };
+  const names = up.map(([n]) => n);
+  return {
+    status: "open",
+    detail: `${names.slice(0, 2).join(", ")}${names.length > 2 ? ` +${names.length - 2}` : ""} ${names.length > 1 ? "have" : "has"} an address${proxy ? ", proxy set" : ""} (no connection attempted)`
+  };
+}
+function writableOutside(root, home, findings) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (abs, why) => {
+    const r = real(abs);
+    if (seen.has(r) || inside(r, root) || !writable2(r)) return;
+    seen.add(r);
+    out.push({ path: r, why });
+  };
+  if (!inside(home, root)) add(home, "your home folder");
+  const parent = dirname2(root);
+  if (parent !== root) add(parent, "the folder above the tree");
+  for (const f of findings) if (f.kind === "symlink-escape" && f.target) add(f.target, `${f.path.replace(/\/+$/, "")} links there`);
+  return out;
+}
+function reachFix(r, legs, platform) {
+  const names = r.credentials.filter((c) => c.where === "env" && c.path !== "SSH_AUTH_SOCK").map((c) => c.path);
+  const files = r.credentials.some((c) => c.where !== "env");
+  if (legs < 3) {
+    const missing = [!r.credentials.length && "no credentials", r.network.status !== "open" && "no network", !r.writable.length && "no writes outside the tree"].filter(Boolean).join(", ");
+    return { say: `not all three at once (${missing}): a bad command can erase here, but not ship your keys out`, cost: "seconds" };
+  }
+  const sandbox = "sandbox the agent's commands so they write only this workspace and reach only allowed hosts (Codex --sandbox workspace-write, Claude Code /sandbox, a devcontainer)";
+  if (names.length && platform !== "win32")
+    return {
+      say: files ? `break one leg: ${sandbox}; at least start it without the tokens` : "break one leg: start the agent from a shell without the tokens",
+      run: `env ${names.map((n) => `-u ${n}`).join(" ")} "$SHELL"`,
+      cost: files ? "minutes" : "seconds"
+    };
+  return { say: `break one leg: ${sandbox}`, cost: "minutes" };
+}
+function probeReach(root, findings, opts = {}) {
+  const env = opts.env ?? process.env;
+  const platform = opts.platform ?? process.platform;
+  const home = real(opts.home ?? homedir());
+  const absRoot = real(root);
+  const tree = treeCredentials(absRoot, opts.maxEntries ?? 2e4);
+  const homeCreds = homeCredentials(home, platform, env).filter((c) => !inside(real(c.path), absRoot));
+  const credentials = [...tree.found, ...homeCreds, ...envCredentials(env)];
+  const base2 = { credentials, credentialsCapped: tree.capped, network: network(env, opts.interfaces), writable: writableOutside(absRoot, home, findings) };
+  const legs = (credentials.length ? 1 : 0) + (base2.network.status === "open" ? 1 : 0) + (base2.writable.length ? 1 : 0);
+  return { ...base2, legs, trifecta: legs === 3, fix: reachFix(base2, legs, platform) };
+}
+
 // src/run.ts
 function mapPath(path, opts = {}) {
   let config = opts.config;
   if (!config) {
     let root;
     try {
-      root = statSync3(path).isDirectory() ? realpathSync4.native(resolve2(path)) : void 0;
+      root = statSync4(path).isDirectory() ? realpathSync5.native(resolve3(path)) : void 0;
     } catch {
     }
     if (root) config = loadConfig(root, opts.configFile).config;
   }
   const inv = collect(path, { ...opts, config });
   config ??= loadConfig(inv.root, opts.configFile).config;
-  return grade(inv, { thresholdBytes: opts.thresholdBytes, config });
+  const report = grade(inv, { thresholdBytes: opts.thresholdBytes, config });
+  if (opts.reach) report.reach = probeReach(report.root, report.findings, typeof opts.reach === "object" ? opts.reach : {});
+  return report;
 }
 
 // src/mcp.ts
@@ -1229,8 +1487,15 @@ var PATH_PROP = { type: "string", description: "Directory to map (absolute, or r
 var TOOLS = [
   {
     name: "map_report",
-    description: "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot or by cloud-sync version history undomap could verify), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. Read-only: never writes, deletes or runs fixes.",
-    inputSchema: { type: "object", properties: { path: PATH_PROP }, required: [] },
+    description: "Map which paths under a directory an AI coding agent could erase with no way back. Grades every significant path: Zone VE (permanent: gitignored or untracked and not regenerable, outside git, symlinks escaping the tree, repos with no remote), Zone AE (slow undo: regenerable build output, uncommitted edits, unpushed commits, covered by a local snapshot or by cloud-sync version history undomap could verify), Zone X (clean tracked files). Ranked by bytes, with the cheapest fix for each permanent place. With reach=true it also reports credential reach (the lethal trifecta): whether this process can read live credentials (.env files, cloud and ssh keys, token env var names; presence only, values are never read), reach the network and write outside the tree at once. Read-only: never writes, deletes or runs fixes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: PATH_PROP,
+        reach: { type: "boolean", description: "also report credential reach (lethal trifecta) for the environment this server runs in. Default false." }
+      },
+      required: []
+    },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   },
   {
@@ -1245,10 +1510,10 @@ var TOOLS = [
   }
 ];
 function callTool(name, args, cwd = process.cwd()) {
-  const path = resolve3(cwd, typeof args.path === "string" && args.path ? args.path : ".");
+  const path = resolve4(cwd, typeof args.path === "string" && args.path ? args.path : ".");
   if (name === "map_report") {
-    const r = mapPath(path);
-    return { text: formatMarkdown(r) + "\n\n```json\n" + JSON.stringify({ root: r.root, totals: r.totals, findings: r.findings.slice(0, 60), probes: r.probes, repos: r.repos }, null, 2) + "\n```" };
+    const r = mapPath(path, { reach: args.reach === true });
+    return { text: formatMarkdown(r) + "\n\n```json\n" + JSON.stringify({ root: r.root, totals: r.totals, findings: r.findings.slice(0, 60), probes: r.probes, repos: r.repos, reach: r.reach }, null, 2) + "\n```" };
   }
   if (name === "list_permanent") {
     const limit = Math.max(1, Math.min(500, Number(args.limit ?? 25) || 25));
@@ -1320,6 +1585,8 @@ Options
       --all                      list every Zone VE place (default: top 12; secrets always shown)
       --max-permanent <size>     permanent bytes allowed before exit 1 (default 0), e.g. 1MB
       --config <file>            config file (default: <path>/.undomap.json)
+      --reach                    also check credential reach: live credentials + network + writes outside
+                                 the tree (the "lethal trifecta"). Names and paths only, never values
       --no-probe                 skip snapshot and cloud-sync probes (Time Machine, btrfs/ZFS, Timeshift, Dropbox\u2026)
       --no-color                 plain output (also NO_COLOR=1)
   -h, --help / -v, --version
@@ -1332,7 +1599,7 @@ Zones (FEMA flood-map letters)
 
 Exit codes: 0 nothing permanent \xB7 1 something in Zone VE \xB7 2 usage or hard error
 undomap never writes: git runs with GIT_OPTIONAL_LOCKS=0. Docs: https://blackman99.github.io/undomap/docs/`;
-var BOOL = /* @__PURE__ */ new Set(["fix", "json", "markdown", "all", "no-probe", "no-color", "help", "version"]);
+var BOOL = /* @__PURE__ */ new Set(["fix", "json", "markdown", "all", "reach", "no-probe", "no-color", "help", "version"]);
 var VALUED = /* @__PURE__ */ new Set(["max-permanent", "config"]);
 var SHORT = { h: "help", v: "version" };
 var COMMANDS = ["map", "mcp", "version", "help"];
@@ -1420,6 +1687,7 @@ async function main(argv, io = defaultIo()) {
     thresholdBytes: threshold,
     configFile: typeof a.flags.config === "string" ? resolvePath(io.cwd, a.flags.config) : void 0,
     noProbe: !!a.flags["no-probe"],
+    reach: !!a.flags.reach,
     onProgress: progress ? (n) => {
       shown = true;
       io.err(`\r  surveying\u2026 ${n.toLocaleString("en-US")} files`);
@@ -1436,7 +1704,7 @@ async function main(argv, io = defaultIo()) {
         fix: !!a.flags.fix,
         limit: a.flags.all ? Infinity : 12,
         width: process.stdout.columns,
-        home: homedir()
+        home: homedir2()
       }) + "\n"
     );
   return report.exitCode;
@@ -1451,15 +1719,15 @@ function safeBytes(s) {
 function isEntryPoint() {
   const arg = process.argv[1];
   if (!arg) return false;
-  const real = (p) => {
+  const real2 = (p) => {
     try {
-      return realpathSync5(p);
+      return realpathSync6(p);
     } catch {
       return p;
     }
   };
   const norm = (p) => process.platform === "win32" ? p.toLowerCase() : p;
-  return norm(real(fileURLToPath(import.meta.url))) === norm(real(resolvePath(arg)));
+  return norm(real2(fileURLToPath(import.meta.url))) === norm(real2(resolvePath(arg)));
 }
 if (isEntryPoint()) {
   main(process.argv.slice(2)).then(

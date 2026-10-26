@@ -24,6 +24,8 @@ Options
       --all                      list every Zone VE place (default: top 12; secrets always shown)
       --max-permanent <size>     permanent bytes allowed before exit 1 (default 0), e.g. 1MB
       --config <file>            config file (default: <path>/.undomap.json)
+      --reach                    also check credential reach: live credentials + network + writes outside
+                                 the tree (the "lethal trifecta"). Names and paths only, never values
       --no-probe                 skip snapshot and cloud-sync probes (Time Machine, btrfs/ZFS, Timeshift, Dropbox…)
       --no-color                 plain output (also NO_COLOR=1)
   -h, --help / -v, --version
@@ -37,7 +39,7 @@ Zones (FEMA flood-map letters)
 Exit codes: 0 nothing permanent · 1 something in Zone VE · 2 usage or hard error
 undomap never writes: git runs with GIT_OPTIONAL_LOCKS=0. Docs: https://blackman99.github.io/undomap/docs/`;
 
-const BOOL = new Set(["fix", "json", "markdown", "all", "no-probe", "no-color", "help", "version"]);
+const BOOL = new Set(["fix", "json", "markdown", "all", "reach", "no-probe", "no-color", "help", "version"]);
 const VALUED = new Set(["max-permanent", "config"]);
 const SHORT: Record<string, string> = { h: "help", v: "version" };
 const COMMANDS = ["map", "mcp", "version", "help"];
@@ -145,6 +147,7 @@ export async function main(argv: string[], io: Io = defaultIo()): Promise<number
     thresholdBytes: threshold,
     configFile: typeof a.flags.config === "string" ? resolvePath(io.cwd, a.flags.config) : undefined,
     noProbe: !!a.flags["no-probe"],
+    reach: !!a.flags.reach,
     onProgress: progress
       ? (n) => {
           shown = true;

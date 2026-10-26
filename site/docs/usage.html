@@ -54,6 +54,14 @@ undomap . --max-permanent 1MB      # tolerate small things</code></pre>
 <pre><code>// Cursor / Cline / any MCP client
 { "mcpServers": { "undomap": { "command": "npx", "args": ["-y", "github:Blackman99/undomap", "mcp"] } } }</code></pre>
 <p>Two read-only tools, <code>map_report</code> and <code>list_permanent</code>. Both take <code>path</code>, which defaults to the server's working directory. A good instruction for your agent: <em>before <code>rm -rf</code>, <code>git clean -fdx</code>, <code>git reset --hard</code> or a checkpoint restore, call list_permanent on the workspace.</em></p>
+<p><code>map_report</code> also takes <code>reach: true</code> for the <a href="#reach">credential reach</a> section, measured for the environment the server runs in, which is the agent's own.</p>
+<h2 id="reach">Credential reach (lethal trifecta)</h2>
+<pre><code>undomap --reach</code></pre>
+<p>A deletion is bad. A deletion by an agent that can also read your keys, reach the network and write outside the project can be an exfiltration. <code>--reach</code> adds one section that checks those three conditions for the process running undomap:</p>
+<ul><li><b>credentials</b>: credential-looking files in the tree (<code>.env</code>, keys, <code>credentials*.json</code>, <code>secrets/</code>), well-known files in your home folder (<code>~/.aws/credentials</code>, gcloud, Azure, <code>~/.kube/config</code>, Docker, <code>gh</code>, <code>~/.git-credentials</code>, <code>~/.netrc</code>, <code>~/.npmrc</code>, <code>~/.ssh/id_*</code>…) and set environment variables whose <em>name</em> looks like a credential (<code>*_TOKEN</code>, <code>*_API_KEY</code>, <code>*_SECRET</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>SSH_AUTH_SOCK</code>…);</li>
+<li><b>network</b>: a non-loopback interface with an address. No connection is attempted, so a firewall can still block what this calls open;</li>
+<li><b>write out</b>: your home folder, the folder above the tree, or a symlink target outside it, writable by this process.</li></ul>
+<p><b>Values are never read.</b> Files are only <code>stat</code>ed and checked with <code>access()</code>; they are never opened. For environment variables only the name is kept. Run it the way your agent runs (same user, same sandbox, or through the MCP server) to measure the agent's reach rather than yours. When all three are present, the fix is to break one leg; undomap prints the cheapest one it can see. <code>--reach</code> never changes the exit code.</p>
 <p class="next">Next sheet: <a href="configuration.html">Configuration</a></p></main></div>
 <footer class="foot">undomap 0.1.0 · MIT · <a href="https://github.com/Blackman99/undomap/issues">issues</a></footer>
 </body></html>

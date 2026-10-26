@@ -55,12 +55,23 @@
                  "cloud": { "provider": "Dropbox", "status": "unverified", "note": "Dropbox app not running" },
                  "fix": { "say": "…", "run": "…", "cost": "minutes" } }, …],
   "skipped": [{ "path": "private/", "reason": "EACCES" }],
-  "exitCode": 1, "thresholdBytes": 0
+  "exitCode": 1, "thresholdBytes": 0,
+  "reach": {                                   // only with --reach
+    "credentials": [{ "path": ".env", "type": "dotenv", "where": "tree" },
+                    { "path": "/home/me/.aws/credentials", "type": "AWS credentials", "where": "home" },
+                    { "path": "GITHUB_TOKEN", "type": "token-like name", "where": "env" }],
+    "credentialsCapped": false,
+    "network": { "status": "open", "detail": "eth0 has an address (no connection attempted)" },
+    "writable": [{ "path": "/home/me", "why": "your home folder" }],
+    "legs": 3, "trifecta": true,
+    "fix": { "say": "break one leg: …", "run": "env -u GITHUB_TOKEN "$SHELL"", "cost": "minutes" }
+  }
 }</code></pre>
 <p><code>cloud</code> is present for a path inside a sync folder: <code>status</code> is <code>covered</code> (graded AE), <code>unverified</code>, <code>partial</code> (iCloud: deletes only) or <code>gap</code> (the provider skips it); <code>note</code> says why. <code>forcedBy</code> is present when a <code>permanent</code> pattern from <code>.undomap.json</code> matched the path (see <a href="configuration.html#precedence">precedence</a>); <code>why</code> then says the config forced it. Paths are relative to <code>root</code>, use POSIX separators, and directories end in <code>/</code>. <code>capped: true</code> means sizing stopped at 250,000 entries for that place, so bytes is a lower bound (shown with a <code>+</code>). Remote URLs are never printed, only remote names, because URLs can carry tokens.</p>
+<p><code>reach</code> (only with <code>--reach</code>): <code>where</code> is <code>tree</code> (path relative to <code>root</code>), <code>home</code> (absolute) or <code>env</code> (the variable name: never its value). <code>network.status</code> is <code>open</code>, <code>closed</code> (loopback only, or the Codex sandbox's network-disabled flag) or <code>unknown</code> (loopback plus a proxy, as sandboxes with an allowlist set up). <code>legs</code> counts the three conditions; <code>trifecta</code> is all three.</p>
 <h2>MCP tools</h2>
 <table><tr><th>tool</th><th>args</th><th>returns</th></tr>
-<tr><td><code>map_report</code></td><td><code>path?</code></td><td>Markdown report + compact JSON</td></tr>
+<tr><td><code>map_report</code></td><td><code>path?</code>, <code>reach?</code> (false)</td><td>Markdown report + compact JSON; with <code>reach</code>, the credential reach section too</td></tr>
 <tr><td><code>list_permanent</code></td><td><code>path?</code>, <code>limit?</code> (25)</td><td>JSON: summary, permanent[] with path, bytes, why, forcedBy, cloud, fix, run; more</td></tr></table>
 <p>Both are annotated <code>readOnlyHint: true</code>, <code>destructiveHint: false</code>.</p>
 <p class="next">Next sheet: <a href="faq.html">FAQ</a></p></main></div>

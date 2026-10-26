@@ -15,10 +15,10 @@
 
 - [x] **Cloud-sync versioning**: iCloud Drive, Dropbox, OneDrive and Google Drive folders are detected read-only (client config, env, folder names, `.dropbox` markers) and reported under probes. A path moves to Zone AE (`kind: "cloud"`) only when the client config points at the folder, the client is running and no known exclusion applies (Dropbox ignore attributes and `rules.dropboxignore`, temp/system/refused names, per-file size limits). iCloud keeps deletes but not overwrites, so it never demotes. Everything else stays Zone VE as "possible cloud versioning, unverified".
 - [x] `permanent` overrides in `.undomap.json`: force a place into Zone VE even if it looks regenerable. A permanent folder inside a regenerable one is carved out with its own bytes. Precedence: git facts, then real coverage (`backedUp`, snapshots), then `permanent`, then regenerable guesses. JSON findings carry `forcedBy`.
+- [x] **Credential reach / lethal trifecta** (`--reach`, MCP `map_report` `reach: true`): flags workspaces where the process can read live credentials, reach the network and write outside the tree at once (the conditions that turn a deletion into an exfiltration). Credentials by name and path only (tree files, well-known home files, `~/.ssh/id_*`, credential-like env var *names*), never values; network from interfaces with no connection attempted; writes outside from `access()` on home, the parent and symlink targets. Prints the cheapest leg to break. Opt-in, never changes the exit code.
 
 ### Planned
 
-- **Credential reach / lethal trifecta**: flag workspaces where the agent can read live credentials, reach the network and write outside the tree at once (the conditions that turn a deletion into an exfiltration).
 - Windows: VSS shadow-copy and File History probes.
 
 ## v0.3 — before and after the agent

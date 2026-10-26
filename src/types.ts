@@ -111,6 +111,30 @@ export interface ZoneTotal {
   files: number;
 }
 
+/** A live credential the process can read. Only where it is and what kind: never its contents. */
+export interface ReachCredential {
+  /** tree: relative to the root · home: absolute · env: the variable NAME. */
+  path: string;
+  /** "dotenv", "ssh key", "AWS credentials", "token-like name"… */
+  type: string;
+  where: "tree" | "home" | "env";
+}
+
+/** Credential reach (--reach): the three conditions that turn a deletion into an exfiltration. */
+export interface Reach {
+  credentials: ReachCredential[];
+  /** The tree walk stopped at its entry cap: there may be more in the tree. */
+  credentialsCapped: boolean;
+  /** open: a non-loopback interface (or a proxy) is configured. No connection is ever attempted. */
+  network: { status: "open" | "closed" | "unknown"; detail: string };
+  /** Writable directories outside the tree (absolute, symlinks resolved). */
+  writable: { path: string; why: string }[];
+  /** How many of the three are present. */
+  legs: 0 | 1 | 2 | 3;
+  trifecta: boolean;
+  fix: Fix;
+}
+
 export interface Report {
   tool: "undomap";
   version: string;
@@ -126,4 +150,6 @@ export interface Report {
   /** Exit code the CLI uses for this report under the given threshold. */
   exitCode: 0 | 1;
   thresholdBytes: number;
+  /** Present only with --reach (opt-in). Never changes the exit code. */
+  reach?: Reach;
 }

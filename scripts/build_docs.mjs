@@ -84,7 +84,15 @@ undomap . --max-permanent 1MB      # tolerate small things</code></pre>
 <pre><code>claude mcp add undomap -- npx -y github:Blackman99/undomap mcp</code></pre>
 <pre><code>// Cursor / Cline / any MCP client
 { "mcpServers": { "undomap": { "command": "npx", "args": ["-y", "github:Blackman99/undomap", "mcp"] } } }</code></pre>
-<p>Two read-only tools, <code>map_report</code> and <code>list_permanent</code>. Both take <code>path</code>, which defaults to the server's working directory. A good instruction for your agent: <em>before <code>rm -rf</code>, <code>git clean -fdx</code>, <code>git reset --hard</code> or a checkpoint restore, call list_permanent on the workspace.</em></p>`,
+<p>Two read-only tools, <code>map_report</code> and <code>list_permanent</code>. Both take <code>path</code>, which defaults to the server's working directory. A good instruction for your agent: <em>before <code>rm -rf</code>, <code>git clean -fdx</code>, <code>git reset --hard</code> or a checkpoint restore, call list_permanent on the workspace.</em></p>
+<p><code>map_report</code> also takes <code>reach: true</code> for the <a href="#reach">credential reach</a> section, measured for the environment the server runs in, which is the agent's own.</p>
+<h2 id="reach">Credential reach (lethal trifecta)</h2>
+<pre><code>undomap --reach</code></pre>
+<p>A deletion is bad. A deletion by an agent that can also read your keys, reach the network and write outside the project can be an exfiltration. <code>--reach</code> adds one section that checks those three conditions for the process running undomap:</p>
+<ul><li><b>credentials</b>: credential-looking files in the tree (<code>.env</code>, keys, <code>credentials*.json</code>, <code>secrets/</code>), well-known files in your home folder (<code>~/.aws/credentials</code>, gcloud, Azure, <code>~/.kube/config</code>, Docker, <code>gh</code>, <code>~/.git-credentials</code>, <code>~/.netrc</code>, <code>~/.npmrc</code>, <code>~/.ssh/id_*</code>…) and set environment variables whose <em>name</em> looks like a credential (<code>*_TOKEN</code>, <code>*_API_KEY</code>, <code>*_SECRET</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>SSH_AUTH_SOCK</code>…);</li>
+<li><b>network</b>: a non-loopback interface with an address. No connection is attempted, so a firewall can still block what this calls open;</li>
+<li><b>write out</b>: your home folder, the folder above the tree, or a symlink target outside it, writable by this process.</li></ul>
+<p><b>Values are never read.</b> Files are only <code>stat</code>ed and checked with <code>access()</code>; they are never opened. For environment variables only the name is kept. Run it the way your agent runs (same user, same sandbox, or through the MCP server) to measure the agent's reach rather than yours. When all three are present, the fix is to break one leg; undomap prints the cheapest one it can see. <code>--reach</code> never changes the exit code.</p>`,
 configuration: `
 <h2>.undomap.json</h2>
 <p>Optional, at the root you map (or pass <code>--config file</code>). It tells undomap what it can't detect.</p>
@@ -111,6 +119,7 @@ configuration: `
 <tr><td><code>--all</code></td><td>top 12</td><td>list every Zone VE place</td></tr>
 <tr><td><code>--max-permanent &lt;size&gt;</code></td><td><code>0</code></td><td>permanent bytes allowed before exit 1: <code>512KB</code>, <code>10MB</code>, <code>1.5GB</code></td></tr>
 <tr><td><code>--config &lt;file&gt;</code></td><td><code>&lt;path&gt;/.undomap.json</code></td><td>config file</td></tr>
+<tr><td><code>--reach</code></td><td>off</td><td>add the <a href="usage.html#reach">credential reach</a> section: live credentials + network + writes outside the tree. Names and paths only, never values. Doesn't change the exit code</td></tr>
 <tr><td><code>--no-probe</code></td><td>probe</td><td>skip snapshot and cloud-sync probes (<code>UNDOMAP_CLOUD=off</code> skips only the cloud one)</td></tr>
 <tr><td><code>--no-color</code></td><td>auto</td><td>also <code>NO_COLOR=1</code>. <code>FORCE_COLOR=1</code> forces color in pipes</td></tr></table>
 <h2>Exit codes</h2>
@@ -156,12 +165,23 @@ reference: `
                  "cloud": { "provider": "Dropbox", "status": "unverified", "note": "Dropbox app not running" },
                  "fix": { "say": "…", "run": "…", "cost": "minutes" } }, …],
   "skipped": [{ "path": "private/", "reason": "EACCES" }],
-  "exitCode": 1, "thresholdBytes": 0
+  "exitCode": 1, "thresholdBytes": 0,
+  "reach": {                                   // only with --reach
+    "credentials": [{ "path": ".env", "type": "dotenv", "where": "tree" },
+                    { "path": "/home/me/.aws/credentials", "type": "AWS credentials", "where": "home" },
+                    { "path": "GITHUB_TOKEN", "type": "token-like name", "where": "env" }],
+    "credentialsCapped": false,
+    "network": { "status": "open", "detail": "eth0 has an address (no connection attempted)" },
+    "writable": [{ "path": "/home/me", "why": "your home folder" }],
+    "legs": 3, "trifecta": true,
+    "fix": { "say": "break one leg: …", "run": "env -u GITHUB_TOKEN \"$SHELL\"", "cost": "minutes" }
+  }
 }</code></pre>
 <p><code>cloud</code> is present for a path inside a sync folder: <code>status</code> is <code>covered</code> (graded AE), <code>unverified</code>, <code>partial</code> (iCloud: deletes only) or <code>gap</code> (the provider skips it); <code>note</code> says why. <code>forcedBy</code> is present when a <code>permanent</code> pattern from <code>.undomap.json</code> matched the path (see <a href="configuration.html#precedence">precedence</a>); <code>why</code> then says the config forced it. Paths are relative to <code>root</code>, use POSIX separators, and directories end in <code>/</code>. <code>capped: true</code> means sizing stopped at 250,000 entries for that place, so bytes is a lower bound (shown with a <code>+</code>). Remote URLs are never printed, only remote names, because URLs can carry tokens.</p>
+<p><code>reach</code> (only with <code>--reach</code>): <code>where</code> is <code>tree</code> (path relative to <code>root</code>), <code>home</code> (absolute) or <code>env</code> (the variable name: never its value). <code>network.status</code> is <code>open</code>, <code>closed</code> (loopback only, or the Codex sandbox's network-disabled flag) or <code>unknown</code> (loopback plus a proxy, as sandboxes with an allowlist set up). <code>legs</code> counts the three conditions; <code>trifecta</code> is all three.</p>
 <h2>MCP tools</h2>
 <table><tr><th>tool</th><th>args</th><th>returns</th></tr>
-<tr><td><code>map_report</code></td><td><code>path?</code></td><td>Markdown report + compact JSON</td></tr>
+<tr><td><code>map_report</code></td><td><code>path?</code>, <code>reach?</code> (false)</td><td>Markdown report + compact JSON; with <code>reach</code>, the credential reach section too</td></tr>
 <tr><td><code>list_permanent</code></td><td><code>path?</code>, <code>limit?</code> (25)</td><td>JSON: summary, permanent[] with path, bytes, why, forcedBy, cloud, fix, run; more</td></tr></table>
 <p>Both are annotated <code>readOnlyHint: true</code>, <code>destructiveHint: false</code>.</p>`,
 faq: `
@@ -179,6 +199,8 @@ faq: `
 <p>Built-in names are a guess. List it under <code>permanent</code> in <code>.undomap.json</code> and it's graded Zone VE with a fix, even if it sits inside a regenerable folder (<code>"permanent": [".cache/models/"]</code> carves just that subfolder out). If it's protected some other way, use <code>backedUp</code> instead. See <a href="configuration.html#precedence">precedence</a>.</p>
 <h2>Does it read file contents?</h2>
 <p>Only the first 4 bytes of gitignored or untracked files, to spot compiled binaries. Everything else is <code>lstat</code> and git metadata. Nothing leaves your machine. The landing page draws dropped JSON in the browser tab.</p>
+<h2>Does <code>--reach</code> read my secrets?</h2>
+<p>No. It looks for credentials the way <code>ls</code> would: names, paths and permissions. Credential files are never opened, environment variables are judged by name, and only the name is printed. Finding what's <em>inside</em> files or transcripts is <a href="https://github.com/Blackman99/spillscan">spillscan</a>'s job.</p>
 <h2>How is this different from agentckpt, blast-radius tools or command blockers?</h2>
 <p>Blockers stop commands. Checkpoint tools (like <a href="https://github.com/Blackman99/agentckpt">agentckpt</a>) save state. Post-mortem tools read transcripts after the fact. undomap is the pre-flight audit: where would a mistake cost you something you can't get back?</p>`,
 };

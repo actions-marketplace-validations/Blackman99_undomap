@@ -29,6 +29,8 @@
 <p>Built-in names are a guess. List it under <code>permanent</code> in <code>.undomap.json</code> and it's graded Zone VE with a fix, even if it sits inside a regenerable folder (<code>"permanent": [".cache/models/"]</code> carves just that subfolder out). If it's protected some other way, use <code>backedUp</code> instead. See <a href="configuration.html#precedence">precedence</a>.</p>
 <h2>Does it read file contents?</h2>
 <p>Only the first 4 bytes of gitignored or untracked files, to spot compiled binaries. Everything else is <code>lstat</code> and git metadata. Nothing leaves your machine. The landing page draws dropped JSON in the browser tab.</p>
+<h2>Does <code>--reach</code> read my secrets?</h2>
+<p>No. It looks for credentials the way <code>ls</code> would: names, paths and permissions. Credential files are never opened, environment variables are judged by name, and only the name is printed. Finding what's <em>inside</em> files or transcripts is <a href="https://github.com/Blackman99/spillscan">spillscan</a>'s job.</p>
 <h2>How is this different from agentckpt, blast-radius tools or command blockers?</h2>
 <p>Blockers stop commands. Checkpoint tools (like <a href="https://github.com/Blackman99/agentckpt">agentckpt</a>) save state. Post-mortem tools read transcripts after the fact. undomap is the pre-flight audit: where would a mistake cost you something you can't get back?</p>
 <p class="next">Back to <a href="./">Overview</a></p></main></div>

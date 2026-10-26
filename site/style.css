@@ -41,7 +41,7 @@ code, pre, kbd { font-family: var(--mono); font-size: .86em; }
 #map .flood-ae { fill: url(#dots-ae); stroke: var(--ae); stroke-width: 1.2; stroke-dasharray: 6 4; }
 #map .river { fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; opacity: .8; }
 #map .feature { font: italic 400 19px var(--body); fill: var(--ink); letter-spacing: .14em; opacity: .75; }
-#map .ridge { font: italic 400 17px var(--body); fill: var(--x); letter-spacing: .3em; }
+#map .ridge { font: italic 400 17px var(--body); fill: var(--x); letter-spacing: .3em; stroke: var(--base); stroke-width: 4px; stroke-linejoin: round; paint-order: stroke; }
 #map .tick { stroke: var(--ink); stroke-width: 1; }
 #map .tick-l { font: 500 10px var(--mono); fill: var(--ink-3); }
 #map .bm { cursor: pointer; transition: opacity .3s; }
@@ -59,10 +59,24 @@ code, pre, kbd { font-family: var(--mono); font-size: .86em; }
 #map .bm .halo { stroke: var(--base); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
 #map .bm:hover path, #map .bm.hot path { stroke: var(--ve); }
 #map .bm.hot .lab1, #map .bm:hover .lab1 { text-decoration: underline; }
+/* levee: FIRM-style line with teeth; dashed when provisionally accredited, dotted for iCloud (deletes only) */
+#map .levee-g, #map .levee-key { opacity: 0; transition: opacity .7s ease-out; }
+#map .levee-g.on, #map .levee-key.on { opacity: 1; }
+#map .levee path { fill: none; stroke: var(--ink); stroke-linejoin: round; }
+#map .levee .line { stroke-width: 2.6; }
+#map .levee .teeth { stroke-width: 9; stroke-dasharray: 1.8 7; opacity: .85; }
+#map .levee.unverified .line { stroke-dasharray: 14 8; }
+#map .levee.unverified .teeth { stroke-dasharray: 1.8 20; opacity: .55; }
+#map .levee.partial .line { stroke-dasharray: 2 5; stroke-linecap: round; }
+#map .levee.partial .teeth { display: none; }
+#map .key-box { fill: var(--base); stroke: var(--ink); stroke-width: 1.2; }
+#map .levee-key .k1 { font: 700 12.5px var(--display); letter-spacing: .06em; fill: var(--ink); }
+#map .levee-key .k2 { font: 500 11.5px var(--mono); fill: var(--ink-2); }
+#map .bm path.stake, #map .bm.ve path.stake { fill: var(--ve); stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
 #map .north text { font: 800 15px var(--display); fill: var(--ink); }
 #map .scalebar text { font: 500 11px var(--mono); fill: var(--ink-2); }
 
-.collar { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.2fr) auto; gap: 18px 34px; align-items: end; padding: 16px 6px 0; }
+.collar { display: grid; grid-template-columns: minmax(210px, .9fr) minmax(min-content, 1.2fr) auto; gap: 18px 34px; align-items: end; padding: 16px 6px 0; }
 .tabs { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px 18px; flex-wrap: wrap; padding: 0 1px; margin-bottom: -6px; position: relative; z-index: 1; }
 .tabs .kicker { margin: 0 0 12px; font: 500 11px/1.4 var(--mono); letter-spacing: .06em; color: var(--ink-2); text-transform: uppercase; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .tabs .root { text-transform: none; color: var(--ink); }
@@ -72,7 +86,7 @@ code, pre, kbd { font-family: var(--mono); font-size: .86em; }
 .c-title h1 .h1b { display: block; font-weight: 700; font-size: .5em; letter-spacing: .12em; margin-top: 8px; }
 .c-title .imprint { margin: 10px 0 0; font: 500 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); max-width: 30em; margin-left: auto; }
 .readout { margin: 0 0 12px; padding: 9px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); font-size: 15px; line-height: 1.35; }
-.readout b { font: 800 30px/1 var(--display); color: var(--ve-ink); font-variant-numeric: tabular-nums; margin-right: 4px; letter-spacing: -.01em; }
+.readout b { white-space: nowrap; font: 800 30px/1 var(--display); color: var(--ve-ink); font-variant-numeric: tabular-nums; margin-right: 4px; letter-spacing: -.01em; }
 .readout.none b { color: var(--x); }
 /* sample sites are index tabs standing on the sheet's outer neatline */
 .sites { display: flex; flex-wrap: wrap; gap: 0; margin: 0 0 -1px; }
@@ -82,7 +96,7 @@ code, pre, kbd { font-family: var(--mono); font-size: .86em; }
 .sites button .n { opacity: .6; margin-right: 5px; }
 .cmd { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px dashed var(--ink); font: 500 14px var(--mono); }
 .cmd .pr { color: var(--ve); }
-.cmd code { flex: 1; min-width: 0; font-size: 13.5px; overflow-x: auto; white-space: nowrap; }
+.cmd code { flex: 1; min-width: 0; font-size: 13.5px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .copy { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; background: var(--ink); color: var(--base); border: 0; padding: 6px 9px; cursor: pointer; min-width: 62px; }
 .copy.ok { background: var(--x); }
 .note { margin: 14px 6px 0; font-size: 15px; color: var(--ink-2); max-width: 70em; }
@@ -116,11 +130,11 @@ code, pre, kbd { font-family: var(--mono); font-size: .86em; }
 .rows .bmn::before { content: "▲ "; color: var(--ve); }
 .rows .by { font: 800 21px/1 var(--display); color: var(--ve-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rows .bar { display: block; height: 4px; background: var(--ve); margin-top: 6px; transform-origin: left; }
-.rows .p { font: 500 14.5px var(--mono); word-break: break-all; }
+.rows .p { font: 500 14.5px var(--mono); overflow-wrap: anywhere; }
 .rows .why { display: block; font: 400 14px/1.4 var(--body); color: var(--ink-2); margin-top: 3px; }
 .rows .fx { font-size: 14.5px; line-height: 1.4; }
-.rows .fx code { display: flex; gap: 8px; align-items: center; margin-top: 6px; font-size: 12.5px; background: rgba(20, 35, 46, .07); padding: 6px 8px; }
-.rows .fx code .c { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+.rows .fx code { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 12.5px; background: rgba(20, 35, 46, .07); padding: 6px 8px; }
+.rows .fx code .c { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .rows .fx code button { flex: none; font: 500 10px var(--mono); border: 1px solid var(--ink); background: transparent; color: var(--ink); padding: 3px 6px; cursor: pointer; text-transform: uppercase; }
 .rows .fx code button.ok { background: var(--x); color: var(--base); border-color: var(--x); }
 .rows.compact li { grid-template-columns: 74px 128px minmax(0, 1fr); padding: 8px 4px; }
@@ -141,8 +155,9 @@ code, pre, kbd { font-family: var(--mono); font-size: .86em; }
 #profile .ground { fill: rgba(20, 35, 46, .07); stroke: var(--ink); stroke-width: 1.6; }
 #profile .w-ve { fill: rgba(212, 96, 10, .5); } #profile .w-ae { fill: rgba(184, 150, 46, .35); }
 #profile .lvl { stroke-width: 1.2; stroke-dasharray: 5 4; }
-#profile text { font: 500 12px var(--mono); fill: var(--ink); }
-#profile .big { font: 800 15px var(--display); }
+#profile text { font: 500 calc(12px * var(--pk, 1)) var(--mono); fill: var(--ink); }
+#profile .zl, #profile .stn text { stroke: var(--base); stroke-width: calc(4px * var(--pk, 1)); stroke-linejoin: round; paint-order: stroke; }
+#profile .big { font: 800 calc(15px * var(--pk, 1)) var(--display); }
 #profile .stn path { fill: var(--base); stroke: var(--ink); stroke-width: 2; }
 figcaption { font-size: 14px; color: var(--ink-2); margin-top: 8px; }
 .stations { list-style: none; padding: 0; margin: 18px 0 0; columns: 2 380px; column-gap: 40px; }
@@ -167,6 +182,13 @@ figcaption { font-size: 14px; color: var(--ink-2); margin-top: 8px; }
 .foot { margin: 70px clamp(16px, 4vw, 48px) 0; padding: 16px 0 40px; border-top: 1.5px solid var(--ink); font-size: 14px; color: var(--ink-2); }
 .foot p { margin: 4px 0; } .foot .scale { font: 500 12px var(--mono); }
 
+/* mid widths: the install command keeps its full width, so the collar title steps down a size */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .collar { gap: 18px 24px; }
+  .c-title { padding-left: 20px; }
+  .c-title h1 { font-size: clamp(30px, 3.1vw, 60px); }
+  .readout b { font-size: 26px; }
+}
 @media (max-width: 900px) {
   .collar { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .c-title { order: -1; text-align: left; border-left: 0; padding-left: 0; }
@@ -174,7 +196,7 @@ figcaption { font-size: 14px; color: var(--ink-2); margin-top: 8px; }
   .strip .panelno { display: none; } .strip { justify-content: space-between; }
   .rows li { grid-template-columns: minmax(0, 1fr); gap: 4px; } .rows.compact li { grid-template-columns: minmax(0, 1fr); }
   .rows .bmn { order: -1; }
-  .panel-h { grid-template-columns: 1fr; } .sheetno { grid-row: auto; margin-bottom: 4px; }
+  .panel-h { grid-template-columns: minmax(0, 1fr); } .panel-h .sub { overflow-wrap: anywhere; } .sheetno { grid-row: auto; margin-bottom: 4px; }
   .key > div { grid-template-columns: 1fr; gap: 6px; }
   .tb, .tb tbody, .tb tr { display: block; } .tb pre { max-width: calc(100vw - 48px); }
   .tb th { display: block; width: auto; border-right: 0; border-bottom: 0; padding-bottom: 0; } .tb td { display: block; padding-left: 4px; }
@@ -191,6 +213,7 @@ figcaption { font-size: 14px; color: var(--ink-2); margin-top: 8px; }
 
 /* share-image mode (?og): map column + title-block column, nothing else */
 body.og { overflow: hidden; }
+.og #map .bm, .og #map .levee-g, .og #map .levee-key { transition: none; } /* still frame: nothing mid-fade */
 .og .strip, .og .note, .og main > section:not(.sheet), .og .foot, .og .skip, .og .tabs, .og .copy { display: none; }
 .og .c-mid .lede { font-size: 16px; margin-bottom: 14px; }
 .og .sheet { height: var(--og-h, 100vh); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: minmax(0, 1fr); gap: 0 30px; }

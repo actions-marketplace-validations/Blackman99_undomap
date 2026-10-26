@@ -2,7 +2,7 @@
 import { fmtBytes, plural } from "./bytes.js";
 import { cloudCheck, snapshotFix } from "./fix.js";
 import { machineSnapshots } from "./grade.js";
-import type { Finding, Report, Zone } from "./types.js";
+import type { Finding, Reach, ReachCredential, Report, Zone } from "./types.js";
 
 export interface TextOptions {
   color: boolean;
@@ -159,11 +159,62 @@ export function formatText(r: Report, o: TextOptions): string {
     out.push(`  ${k.copper("cloud sync")}  ${c.provider} may keep versions of ${n === ve.length ? (n === 1 ? "the place" : n === 2 ? "both places" : `all ${n} places`) : plural(n, "place")} above, but undomap can't confirm it (${c.note})`);
     out.push(`    ${k.dim("→")} ${cloudCheck(c)}`);
   }
+  if (r.reach) out.push("", ...reachText(r.reach, o, k, width));
   if (ve.length && !o.fix) {
     out.push("");
     out.push(k.dim(`  undomap --fix for every place · --json for scripts · exit 1 = something in Zone VE`));
   }
   return out.join("\n");
+}
+
+const REACH_HEAD = ["nothing a bad command could ship out", "1 of 3: a bad command here can erase, not leak", "2 of 3: one more and a deletion can become a leak", "3 of 3: a bad command here can leak your keys as well as erase"];
+
+export function credLabel(c: ReachCredential, home?: string): string {
+  if (c.where === "env") return `$${c.path}`;
+  return c.where === "home" ? tilde(c.path, home) : c.path; // the type is in --json; the path says enough here
+}
+
+/** Fit "a · b · c +N more" into `room` columns (at least one item). */
+function fitList(items: string[], room: number, more = "more"): string {
+  let line = "";
+  for (let i = 0; i < items.length; i++) {
+    const rest = items.length - i - 1;
+    const next = (line ? line + " · " : "") + items[i];
+    const tail = rest ? ` +${rest} ${more}` : "";
+    if (line && (next + tail).length > room) return `${line} +${items.length - i} ${more}`;
+    line = next;
+  }
+  return line;
+}
+
+/** Greedy word wrap for long advice lines. */
+function wrap(s: string, n: number): string[] {
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of s.split(" ")) {
+    if (cur && (cur + " " + w).length > n) {
+      lines.push(cur);
+      cur = w;
+    } else cur = cur ? cur + " " + w : w;
+  }
+  return cur ? [...lines, cur] : lines;
+}
+
+function reachText(x: Reach, o: TextOptions, k: ReturnType<typeof palette>, width: number): string[] {
+  const tone = x.legs === 3 ? k.VE : x.legs === 2 ? k.AE : k.X;
+  const mark = (on: boolean | undefined) => (on === undefined ? k.dim("?  ") : on ? k.VE("yes") : k.X("no "));
+  const room = width - 22;
+  const net = x.network.status === "unknown" ? undefined : x.network.status === "open";
+  const creds = x.credentials.map((c) => credLabel(c, o.home));
+  const out = [
+    `${tone("◆")} ${k.bold(tone("REACH"))} ${k.dim("·")} ${tone("LETHAL TRIFECTA")}   ${x.legs === 3 ? k.bold(REACH_HEAD[3]) : REACH_HEAD[x.legs]}`,
+    `  ${"credentials".padEnd(12)} ${mark(creds.length > 0)}  ${creds.length ? fitList(creds, room) + (x.credentialsCapped ? k.dim(" (tree walk capped)") : "") : k.dim("none readable")}`,
+    `  ${"network".padEnd(12)} ${mark(net)}  ${k.dim(x.network.detail)}`,
+    `  ${"write out".padEnd(12)} ${mark(x.writable.length > 0)}  ${x.writable.length ? fitList(x.writable.map((w) => `${tilde(w.path, o.home)} ${k.dim(`(${w.why})`)}`), room + 40) : k.dim("nothing writable outside the tree")}`,
+    ...wrap(x.fix.say, width - 17).map((l, i) => `  ${i ? " ".repeat(12) : k.copper("fix".padEnd(12))} ${l}`),
+  ];
+  if (x.fix.run) out.push(`  ${" ".repeat(13)}${k.dim("$")} ${x.fix.run}`);
+  return out;
 }
 
 export function formatMarkdown(r: Report): string {
@@ -193,7 +244,28 @@ export function formatMarkdown(r: Report): string {
     lines.push("", "</details>");
   }
   lines.push("", "Probes: " + r.probes.map((p) => `${p.name}: ${p.detail}`).join(" · "));
+  if (r.reach) lines.push("", ...reachMarkdown(r.reach));
   return lines.join("\n");
+}
+
+function reachMarkdown(x: Reach): string[] {
+  const esc = (s: string) => s.replace(/\|/g, "\\|");
+  const yn = (on: boolean | undefined) => (on === undefined ? "?" : on ? "**yes**" : "no");
+  const creds = x.credentials.slice(0, 20).map((c) => (c.where === "env" ? `\`$${c.path}\`` : `\`${esc(c.path)}\` ${esc(c.type)}`));
+  if (x.credentials.length > 20) creds.push(`+${x.credentials.length - 20} more`);
+  return [
+    `### Credential reach — ${x.legs} of 3${x.trifecta ? ": lethal trifecta" : ""}`,
+    "",
+    x.trifecta ? "Live credentials, network and writes outside the tree at once: a bad command here can leak as well as erase." : REACH_HEAD[x.legs].replace(/^\d of 3: /, "") + ".",
+    "",
+    "| Condition | Present | Where |",
+    "|---|---|---|",
+    `| Live credentials (presence only, values never read) | ${yn(x.credentials.length > 0)} | ${creds.join(", ") || "—"}${x.credentialsCapped ? " (tree walk capped)" : ""} |`,
+    `| Network | ${yn(x.network.status === "unknown" ? undefined : x.network.status === "open")} | ${esc(x.network.detail)} |`,
+    `| Writes outside the tree | ${yn(x.writable.length > 0)} | ${x.writable.map((w) => `\`${esc(w.path)}\` ${esc(w.why)}`).join(", ") || "—"} |`,
+    "",
+    `**Fix:** ${x.fix.say}${x.fix.run ? `  \n\`${x.fix.run}\`` : ""}`,
+  ];
 }
 
 export function formatJson(r: Report): string {

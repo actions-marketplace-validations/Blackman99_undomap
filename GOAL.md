@@ -14,6 +14,7 @@ Developers and small teams who give Claude Code, Codex, Cursor, Cline, OpenCode 
   - **Zone X (undoable)**: clean tracked files: `git checkout` brings them back.
 - Ranking Zone VE by bytes, with one concrete, cheapest fix per place (a command where there is one).
 - Best-effort snapshot probes (Time Machine, btrfs/snapper, ZFS, Timeshift) and cloud-sync probes (iCloud Drive, Dropbox, OneDrive, Google Drive version history). A probe that can't run never fails the map.
+- Credential reach (`--reach`, opt-in): whether the process can read live credentials, reach the network and write outside the tree at once, from names, paths and permissions only.
 - Output for people (terminal), scripts (`--json`, exit codes), CI (GitHub Action, Markdown job summary) and agents (read-only MCP server).
 
 ## Out of scope

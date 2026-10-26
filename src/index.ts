@@ -5,5 +5,6 @@ export { formatText, formatMarkdown, formatJson } from "./format.js";
 export { fmtBytes, parseBytes } from "./bytes.js";
 export { regenerable, isSecret, globMatch } from "./patterns.js";
 export { probeSnapshots } from "./snapshots.js";
+export { probeReach, envCredentials } from "./reach.js";
 export { VERSION } from "./version.js";
 export type * from "./types.js";

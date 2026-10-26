@@ -98,7 +98,7 @@ Outputs: `permanent-bytes`, `permanent-places`, `slow-bytes`, `json`.
 { "mcpServers": { "undomap": { "command": "npx", "args": ["-y", "github:Blackman99/undomap", "mcp"] } } }
 ```
 
-Tools: `map_report` (the whole map) and `list_permanent` (just Zone VE).
+Tools: `map_report` (the whole map; `reach: true` adds credential reach) and `list_permanent` (just Zone VE).
 
 **Config:** `.undomap.json` in the mapped directory tells undomap what it can't detect:
 
@@ -112,12 +112,28 @@ Tools: `map_report` (the whole map) and `list_permanent` (just Zone VE).
 
 `permanent` forces a place into Zone VE even when its name or contents look regenerable (a hand-tuned folder under `dist/`, model weights in a cache). Precedence: what git knows (tracked, uncommitted, unpushed) wins, then real coverage (`backedUp`, a snapshot), then `permanent`, then any regenerable guess. See [configuration](https://blackman99.github.io/undomap/docs/configuration.html#precedence).
 
+**Credential reach:** `--reach` adds the "lethal trifecta" check: can this process read live credentials, reach the network and write outside the tree, all at once? Those are the conditions that turn a deletion into an exfiltration.
+
+```text
+◆ REACH · LETHAL TRIFECTA   3 of 3: a bad command here can leak your keys as well as erase
+  credentials  yes  .env · ~/.aws/credentials · ~/.ssh/id_ed25519 · $GITHUB_TOKEN
+  network      yes  eth0 has an address (no connection attempted)
+  write out    yes  ~ (your home folder) · ~/dev (the folder above the tree)
+  fix          break one leg: sandbox the agent's commands so they write only this workspace and
+               reach only allowed hosts (Codex --sandbox workspace-write, Claude Code /sandbox, a
+               devcontainer); at least start it without the tokens
+               $ env -u GITHUB_TOKEN "$SHELL"
+```
+
+Presence and paths only: credential files are never opened, and environment variables are reported by name. Run it the way your agent runs (or ask the MCP server with `reach: true`) to measure the agent's reach. It is opt-in and never changes the exit code. [Details](https://blackman99.github.io/undomap/docs/usage.html#reach).
+
 ## Guarantees
 
 - **Never writes.** No file in the mapped tree, `.git` or the index is touched. Git runs with `GIT_OPTIONAL_LOCKS=0`.
 - **Snapshots are probed, not assumed.** Time Machine, btrfs/snapper, ZFS and Timeshift are checked. A probe that can't run is reported as unknown and never fails the map.
 - **Cloud sync is verified, not trusted.** Inside an iCloud Drive, Dropbox, OneDrive or Google Drive folder, a path only moves to Zone AE when the client's own config points at the folder, the client is running, and none of the provider's known exclusions apply (Dropbox ignore attributes and `rules.dropboxignore`, `.nosync`/temp/system names, per-file size limits). iCloud keeps deletes but not overwrites, so it never demotes. Anything undomap can't confirm stays in Zone VE as "possible cloud versioning, unverified", with a one-line way to check. [Rules](https://blackman99.github.io/undomap/docs/reference.html#cloud).
-- **No network.** No telemetry, no uploads.
+- **Never reads a secret.** Secret-looking files are graded by name. `--reach` only `stat`s credential files and reads environment variable names, never values.
+- **No network.** No telemetry, no uploads, no connections (`--reach` lists interfaces, it doesn't dial out).
 
 ## What it isn't
 
